@@ -16,8 +16,8 @@ func GenerateSalt() []byte {
 	return generateRandom(SaltSize)
 }
 
-func GenerateNonce() []byte {
-	return generateRandom(NonceSize)
+func AESGenerateNonce() []byte {
+	return generateRandom(AESNonceSize)
 }
 
 func DerivedKeyArgon2ID(passphrase []byte, salt []byte) []byte {

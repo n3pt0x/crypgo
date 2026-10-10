@@ -9,18 +9,18 @@ import (
 )
 
 var salt []byte = encryption.GenerateSalt()
-var nonce []byte = encryption.GenerateNonce()
+var nonce []byte = encryption.AESGenerateNonce()
 var derivedKey []byte
 var plaintext []byte = []byte("My super secret message !!!")
 var ciphertext []byte
 
 func TestSaltAndNonce(t *testing.T) {
 	if salt_s := len(salt); salt_s != encryption.SaltSize {
-		t.Fatalf("[Error] Salt has: %d bytes, but he must makes %d bytes", salt_s, encryption.NonceSize)
+		t.Fatalf("[Error] Salt has: %d bytes, but he must makes %d bytes", salt_s, encryption.AESNonceSize)
 	}
 
-	if nonce_s := len(nonce); nonce_s != encryption.NonceSize {
-		t.Fatalf("[Error] Nonce has: %d bytes, but he must makes %d bytes", nonce_s, encryption.NonceSize)
+	if nonce_s := len(nonce); nonce_s != encryption.AESNonceSize {
+		t.Fatalf("[Error] Nonce has: %d bytes, but he must makes %d bytes", nonce_s, encryption.AESNonceSize)
 	}
 }
 
@@ -36,7 +36,7 @@ func TestDerivedKeyArgon2ID(t *testing.T) {
 
 func TestAesEncrypt(t *testing.T) {
 	var err error
-	ciphertext, err = encryption.AesEncrypt(plaintext, derivedKey, nonce)
+	ciphertext, err = encryption.AESEncrypt(plaintext, derivedKey, nonce)
 
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestAesEncrypt(t *testing.T) {
 }
 
 func TestAesDecrypt(t *testing.T) {
-	plaintext_decrypted, err := encryption.AesDecrypt(ciphertext, derivedKey, nonce)
+	plaintext_decrypted, err := encryption.AESDecrypt(ciphertext, derivedKey, nonce)
 
 	if err != nil {
 		t.Fatal(err)

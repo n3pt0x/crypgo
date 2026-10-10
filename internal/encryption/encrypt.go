@@ -1,10 +1,11 @@
 package encryption
 
 const (
-	SaltSize  = 16
-	NonceSize = 12
-	KeySize   = 32 // AES-256, ChaCha20-Poly1305
-	TagSize   = 16
+	SaltSize         = 16
+	AESNonceSize     = 12 // AES-CGM nonce size 2^96
+	XChaChaNonceSize = 24 // XChaCha nonce size 2^192
+	KeySize          = 32 // AES-256, ChaCha20-Poly1305
+	TagSize          = 16
 
 	// Argon2
 	Argon2Time    = 3
