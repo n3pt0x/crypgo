@@ -12,7 +12,7 @@ func GenerateSalt() []byte {
 	return generateRandom(SaltSize)
 }
 
-func AESGenerateNonce() []byte {
+func GenerateNonceAESGCM() []byte {
 	return generateRandom(AESNonceSize)
 }
 
