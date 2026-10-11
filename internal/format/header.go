@@ -11,19 +11,12 @@ var MagicBytes = [6]byte{'C', 'R', 'Y', 'P', 'G', 'O'}
 
 const (
 	Version = 1
-
-	// Algo
-	AlgoAESGCM            = 0x01
-	AlgoXChaCha20Poly1305 = 0x02
-
-	// Others
-	TagCGM = 16
+	TagCGM  = 16
 )
 
 type HeaderAESGCM struct {
 	Magic   [6]byte
 	Version uint8
-	Algo    uint8
 	Salt    [encryption.SaltSize]byte
 	Nonce   [encryption.NonceSizeAESGCM]byte
 }
@@ -36,7 +29,6 @@ type FileAESGCM struct {
 type HeaderXChaCha20Poly1305 struct {
 	Magic   [6]byte
 	Version uint8
-	Algo    uint8
 	Salt    [encryption.SaltSize]byte
 	Nonce   [encryption.NonceSizeXChaCha20Poly1305]byte
 }
@@ -63,10 +55,6 @@ func (h HeaderAESGCM) IsValid() error {
 		return ErrUnsupportedVer
 	}
 
-	if h.Algo != AlgoAESGCM {
-		return ErrInvalidAlgo
-	}
-
 	if len(h.Salt) != encryption.SaltSize {
 		return ErrInvalidSalt
 	}
@@ -85,10 +73,6 @@ func (h HeaderXChaCha20Poly1305) IsValid() error {
 
 	if h.Version != Version {
 		return ErrUnsupportedVer
-	}
-
-	if h.Algo != AlgoXChaCha20Poly1305 {
-		return ErrInvalidAlgo
 	}
 
 	if len(h.Salt) != encryption.SaltSize {
