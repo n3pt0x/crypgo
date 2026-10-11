@@ -17,11 +17,11 @@ var ciphertext []byte
 
 func TestSaltAndNonce(t *testing.T) {
 	if salt_s := len(salt); salt_s != encryption.SaltSize {
-		t.Fatalf("[Error] Salt has: %d bytes, but he must makes %d bytes\n", salt_s, encryption.AESNonceSize)
+		t.Fatalf("[Error] Salt has: %d bytes, but he must makes %d bytes\n", salt_s, encryption.NonceSizeAESGCM)
 	}
 
-	if nonce_s := len(aesNonce); nonce_s != encryption.AESNonceSize {
-		t.Fatalf("[Error] Nonce has: %d bytes, but he must makes %d bytes\n", nonce_s, encryption.AESNonceSize)
+	if nonce_s := len(aesNonce); nonce_s != encryption.NonceSizeAESGCM {
+		t.Fatalf("[Error] Nonce has: %d bytes, but he must makes %d bytes\n", nonce_s, encryption.NonceSizeAESGCM)
 	}
 }
 

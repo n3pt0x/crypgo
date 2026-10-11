@@ -13,7 +13,7 @@ func GenerateSalt() []byte {
 }
 
 func GenerateNonceAESGCM() []byte {
-	return generateRandom(AESNonceSize)
+	return generateRandom(NonceSizeAESGCM)
 }
 
 func GenerateNonceXChaCha20Poly1305() []byte {
