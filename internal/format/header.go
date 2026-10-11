@@ -34,7 +34,7 @@ type HeaderXChaCha20Poly1305 struct {
 }
 
 type FileXChaCha20Poly1305 struct {
-	Header     HeaderAESGCM
+	Header     HeaderXChaCha20Poly1305
 	Ciphertext []byte
 }
 
