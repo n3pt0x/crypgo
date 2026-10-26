@@ -30,10 +30,12 @@ const (
 	Asymmetric = 0x02
 )
 
-type Header interface {
-	IsValid() error
-	WriteTo(w io.Writer) (int64, error)
-}
+const (
+	MaxKDFTime    = 50
+	MaxKDFMemory  = 2 << 20 // 2 GiB, expressed in KiB (argon2's unit)
+	MinKDFThreads = 1
+	MaxKDFThreads = 64
+)
 
 type HeaderSymmetric struct {
 	Magic          [6]byte
@@ -47,10 +49,6 @@ type HeaderSymmetric struct {
 	Salt           [encryption.SaltSize]byte
 	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte // (24 bytes stored), but AES-GCM use only 12 first bytes
 }
-
-// A symmetric file on disk is the fixed-size HeaderSymmetric written via
-// WriteTo, immediately followed by the raw ciphertext up to EOF (no length
-// field).
 
 // type HeaderAsymmetricXChaCha20Poly1305 struct {
 // 	Magic              [6]byte
@@ -69,7 +67,9 @@ var (
 	ErrInvalidMagic   = errors.New("format: magic invalide")
 	ErrUnsupportedVer = errors.New("format: version not supported")
 	ErrInvalidAlgo    = errors.New("format: algorithm unknown")
-	ErrInvalidSalt    = errors.New("format: size isn't valid")
+	ErrInvalidMode    = errors.New("format: mode unknown")
+	ErrInvalidKDF     = errors.New("format: KDF parameters out of allowed bounds")
+	ErrInvalidheader  = errors.New("format: header isn't valid")
 )
 
 func (h HeaderSymmetric) IsValid() error {
@@ -81,10 +81,26 @@ func (h HeaderSymmetric) IsValid() error {
 		return ErrUnsupportedVer
 	}
 
+	if h.Mode != Symmetric {
+		return ErrInvalidMode
+	}
+
 	switch h.EncryptionAlgo {
 	case AlgoAESGCM, AlgoXChaCha20Poly1305:
 	default:
 		return ErrInvalidAlgo
+	}
+
+	if h.KDFTime == 0 || h.KDFTime > MaxKDFTime {
+		return ErrInvalidKDF
+	}
+
+	if h.KDFMemory == 0 || h.KDFMemory > MaxKDFMemory {
+		return ErrInvalidKDF
+	}
+
+	if h.KDFThreads < MinKDFThreads || h.KDFThreads > MaxKDFThreads {
+		return ErrInvalidKDF
 	}
 
 	return nil

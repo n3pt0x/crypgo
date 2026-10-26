@@ -1,15 +1,19 @@
 package encryption
 
 import (
+	"errors"
+
 	"golang.org/x/crypto/argon2"
 )
 
-func DerivedKeyArgon2ID(passphrase []byte, salt []byte, profile uint8) []byte {
-	params, ok := kdfProfiles[profile]
+var ErrUnknownKDFProfile = errors.New("encryption: unknown KDF profile")
+
+func DerivedKeyArgon2ID(passphrase []byte, salt []byte, KDFprofile uint8) ([]byte, error) {
+	params, ok := kdfProfiles[KDFprofile]
 	if !ok {
-		return nil
+		return nil, ErrUnknownKDFProfile
 	}
-	return DerivedKeyArgon2IDWithParams(passphrase, salt, params)
+	return DerivedKeyArgon2IDWithParams(passphrase, salt, params), nil
 }
 
 func DerivedKeyArgon2IDWithParams(passphrase []byte, salt []byte, params Argon2Params) []byte {

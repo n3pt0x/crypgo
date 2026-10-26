@@ -26,7 +26,11 @@ func TestSaltAndNonce(t *testing.T) {
 }
 
 func TestDerivedKeyArgon2ID(t *testing.T) {
-	derivedKey = encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
+	var err error
+	derivedKey, err = encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if key_s := len(derivedKey); key_s != encryption.KeySize {
 		t.Fatalf("[Error] Dereived key has: %d bytes, but she must makes %d bytes\n", key_s, encryption.KeySize)
@@ -106,7 +110,10 @@ func TestDerivedKeyArgon2IDWithParams(t *testing.T) {
 		t.Fatalf("[Error] Known profile %d reported as unknown\n", encryption.KDFProfileArgon2idDefault)
 	}
 
-	keyFromProfile := encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
+	keyFromProfile, err := encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
 	keyFromParams := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, params)
 
 	if key_s := len(keyFromParams); key_s != encryption.KeySize {

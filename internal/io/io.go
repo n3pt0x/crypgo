@@ -1,12 +1,9 @@
 package io
 
 import (
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
-
-	"github.com/n3pt0x/crypgo/internal/encryption"
+	"path/filepath"
 )
 
 var (
@@ -14,34 +11,30 @@ var (
 )
 
 func FileExist(path string) error {
-	_, err := os.OpenFile(path, os.O_RDONLY, 0)
+	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return err
+		return ErrFileNotFound
 	}
 	return nil
 }
 
 func AtomicWriteFile(path string, content []byte) error {
-	b := make([]byte, 16)
-	hex.Encode(b, encryption.GenerateRandom(8))
-	var tmpFile string = fmt.Sprintf("tmp-%s", string(b))
+	dir := filepath.Dir(path)
 
-	f, err := os.CreateTemp("", tmpFile)
+	f, err := os.CreateTemp(dir, "tmp-*")
 	if err != nil {
 		return err
 	}
-
-	defer os.Remove(f.Name())
+	tmpPath := f.Name()
+	defer os.Remove(tmpPath)
 
 	if _, err := f.Write(content); err != nil {
+		f.Close()
 		return err
 	}
 
 	if err := f.Sync(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmpFile, path); err != nil {
+		f.Close()
 		return err
 	}
 
@@ -49,7 +42,7 @@ func AtomicWriteFile(path string, content []byte) error {
 		return err
 	}
 
-	return nil
+	return os.Rename(tmpPath, path)
 }
 
 func ReadFile(path string) ([]byte, error) {

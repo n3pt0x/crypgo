@@ -4,7 +4,9 @@ import "crypto/rand"
 
 func GenerateRandom(size int) []byte {
 	b := make([]byte, size)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("encryption: failed to read random bytes: " + err.Error())
+	}
 	return b
 }
 

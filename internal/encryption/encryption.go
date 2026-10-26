@@ -1,5 +1,7 @@
 package encryption
 
+import "errors"
+
 const (
 	SaltSize                   = 16
 	NonceSizeAESGCM            = 12 // AES-GCM nonce size 2^96
@@ -17,6 +19,12 @@ type Argon2Params struct {
 	Memory  uint32
 	Threads uint8
 }
+
+var (
+	// Errors
+	ErrEncryptionFailed = errors.New("Encryption has failed")
+	ErrDecryptionFailed = errors.New("Decryption has failed")
+)
 
 var kdfProfiles = map[uint8]Argon2Params{
 	KDFProfileArgon2idDefault: {Time: 3, Memory: 64 * 1024, Threads: 4},
