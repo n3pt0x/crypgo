@@ -2,7 +2,9 @@ package format
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 )
@@ -15,60 +17,53 @@ const (
 )
 
 const (
-	// symetric
+	// Symmetric
 	AlgoAESGCM            = 0x01
 	AlgoXChaCha20Poly1305 = 0x02
 
-	// asymetric
+	// Asymmetric
 )
 
 const (
-	// mode
-	symetric  = 0x01
-	asymetric = 0x02
+	// Mode
+	Symetric  = 0x01
+	Asymetric = 0x02
 )
 
-type HeaderAESGCM struct {
+type Header interface {
+	IsValid() error
+	WriteTo(w io.Writer) (int64, error)
+}
+
+type HeaderSymmetric struct {
 	Magic          [6]byte
 	Version        uint8
 	Mode           uint8
 	EncryptionAlgo uint8
 	KDFProfile     uint8
+	KDFTime        uint32
+	KDFMemory      uint32
+	KDFThreads     uint8
 	Salt           [encryption.SaltSize]byte
-	Nonce          [encryption.NonceSizeAESGCM]byte
+	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte // AES-GCM use only 12 first bytes
 }
 
-type FileAESGCM struct {
-	Header     HeaderAESGCM
+type FileSymmetric struct {
+	Header     HeaderSymmetric
 	Ciphertext []byte
 }
 
-type HeaderXChaCha20Poly1305 struct {
-	Magic          [6]byte
-	Version        uint8
-	Mode           uint8
-	EncryptionAlgo uint8
-	KDFProfile     uint8
-	Salt           [encryption.SaltSize]byte
-	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte
-}
-
-type FileXChaCha20Poly1305 struct {
-	Header     HeaderXChaCha20Poly1305
-	Ciphertext []byte
-}
-
-type HeaderAsymetricXChaCha20Poly1305 struct {
-	Magic              [6]byte
-	Version            uint8
-	Mode               uint8
-	EncryptionAlgo     uint8
-	KeyAlgo            uint8
-	EphemeralPublicKey [32]byte
-	NonceKey           [encryption.NonceSizeXChaCha20Poly1305]byte
-	WrappedKey         [32]byte
-	Nonce              [encryption.NonceSizeXChaCha20Poly1305]byte
-}
+// type HeaderAsymetricXChaCha20Poly1305 struct {
+// 	Magic              [6]byte
+// 	Version            uint8
+// 	Mode               uint8
+// 	EncryptionAlgo     uint8
+// 	KeyAlgo            uint8
+// 	EphemeralPublicKey [32]byte
+// 	NonceKey           [encryption.NonceSizeXChaCha20Poly1305]byte
+// 	WrappedKey         [32]byte
+// 	Nonce              [encryption.NonceSizeXChaCha20Poly1305]byte
+// }
 
 // Errors
 var (
@@ -78,7 +73,7 @@ var (
 	ErrInvalidSalt    = errors.New("format: size isn't valid")
 )
 
-func (h HeaderAESGCM) IsValid() error {
+func (h HeaderSymmetric) IsValid() error {
 	if !bytes.Equal(h.Magic[:], MagicBytes[:]) {
 		return ErrInvalidMagic
 	}
@@ -87,33 +82,38 @@ func (h HeaderAESGCM) IsValid() error {
 		return ErrUnsupportedVer
 	}
 
-	if len(h.Salt) != encryption.SaltSize {
-		return ErrInvalidSalt
-	}
-
-	if len(h.Nonce) != encryption.NonceSizeAESGCM {
-		return ErrInvalidSalt
+	switch h.EncryptionAlgo {
+	case AlgoAESGCM, AlgoXChaCha20Poly1305:
+	default:
+		return ErrInvalidAlgo
 	}
 
 	return nil
 }
 
-func (h HeaderXChaCha20Poly1305) IsValid() error {
-	if !bytes.Equal(h.Magic[:], MagicBytes[:]) {
-		return ErrInvalidMagic
+// NonceSize returns the number of leading bytes of Nonce that are actually
+// used by h.EncryptionAlgo (the rest is zero-padding).
+func (h HeaderSymmetric) NonceSize() int {
+	switch h.EncryptionAlgo {
+	case AlgoAESGCM:
+		return encryption.NonceSizeAESGCM
+	case AlgoXChaCha20Poly1305:
+		return encryption.NonceSizeXChaCha20Poly1305
+	default:
+		return 0
 	}
+}
 
-	if h.Version != Version {
-		return ErrUnsupportedVer
+func (h HeaderSymmetric) WriteTo(w io.Writer) (int64, error) {
+	if err := binary.Write(w, binary.LittleEndian, h); err != nil {
+		return 0, err
 	}
+	return int64(binary.Size(h)), nil
+}
 
-	if len(h.Salt) != encryption.SaltSize {
-		return ErrInvalidSalt
+func (h *HeaderSymmetric) ReadFrom(r io.Reader) (int64, error) {
+	if err := binary.Read(r, binary.LittleEndian, h); err != nil {
+		return 0, err
 	}
-
-	if len(h.Nonce) != encryption.NonceSizeXChaCha20Poly1305 {
-		return ErrInvalidSalt
-	}
-
-	return nil
+	return int64(binary.Size(h)), nil
 }

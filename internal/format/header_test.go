@@ -12,95 +12,109 @@ import (
 var passphrase []byte = []byte("test")
 var default_msg_content []byte = []byte("My super secret message !!!")
 
+func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
+	kdfParams, _ := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
+
+	h := format.HeaderSymmetric{
+		Magic:          format.MagicBytes,
+		Version:        format.Version,
+		Mode:           format.Symetric,
+		EncryptionAlgo: algo,
+		KDFProfile:     encryption.KDFProfileArgon2idDefault,
+		KDFTime:        kdfParams.Time,
+		KDFMemory:      kdfParams.Memory,
+		KDFThreads:     kdfParams.Threads,
+		Salt:           [encryption.SaltSize]byte(encryption.GenerateSalt()),
+	}
+	copy(h.Nonce[:], nonce)
+
+	return h
+}
+
 /* AES-256 GCM */
 
-func encryptFileAESGCM(t *testing.T, headerAESGCM *format.HeaderAESGCM) format.FileAESGCM {
+func encryptFileAESGCM(t *testing.T, header *format.HeaderSymmetric) format.FileSymmetric {
 	var derivedKey, ciphertext []byte
 	var err error
 
-	if err := headerAESGCM.IsValid(); err != nil {
-		t.Fatalf("HeaderAESGCM isn't valid: %v\n", err)
+	if err := header.IsValid(); err != nil {
+		t.Fatalf("HeaderSymmetric isn't valid: %v\n", err)
 	}
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, headerAESGCM.Salt[:], encryption.KDFProfileArgon2idDefault)
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
 
-	ciphertext, err = encryption.EncryptAESGCM(default_msg_content, derivedKey, headerAESGCM.Nonce[:])
+	ciphertext, err = encryption.EncryptAESGCM(default_msg_content, derivedKey, header.Nonce[:header.NonceSize()])
 
 	if err != nil {
 		t.Fatalf("AES-GCM encryption has failed: %v\n", err)
 	}
 
-	return format.FileAESGCM{
-		Header:     *headerAESGCM,
+	return format.FileSymmetric{
+		Header:     *header,
 		Ciphertext: ciphertext,
 	}
 }
 
-func decryptFileAESGCM(t *testing.T, fileAESGCM format.FileAESGCM) []byte {
+func decryptFileAESGCM(t *testing.T, file format.FileSymmetric) []byte {
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, fileAESGCM.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	plaintext, err = encryption.DecryptAESCGM(fileAESGCM.Ciphertext, derivedKey, fileAESGCM.Header.Nonce[:])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, file.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
+	plaintext, err = encryption.DecryptAESGCM(file.Ciphertext, derivedKey, file.Header.Nonce[:file.Header.NonceSize()])
 
 	if err != nil {
 		t.Fatalf("AES-GCM decryption has failed: %v\n", err)
 	}
 
 	if !bytes.Equal(plaintext, default_msg_content) {
-		t.Fatal("decryptFileAES() has failed, plaintext has not been recover\n")
+		t.Fatal("decryptFileAESGCM() has failed, plaintext has not been recover\n")
 	}
 
 	return plaintext
 }
 
 func TestFileAESGCM(t *testing.T) {
-	var headerAESGCM format.HeaderAESGCM = format.HeaderAESGCM{
-		Magic:   format.MagicBytes,
-		Version: format.Version,
-		Salt:    [16]byte(encryption.GenerateSalt()),
-		Nonce:   [12]byte(encryption.GenerateNonceAESGCM()),
-	}
-	var fileAESGCM format.FileAESGCM = encryptFileAESGCM(t, &headerAESGCM)
-	var decrypted []byte = decryptFileAESGCM(t, fileAESGCM)
+	header := newHeaderSymmetric(format.AlgoAESGCM, encryption.GenerateNonceAESGCM())
+	file := encryptFileAESGCM(t, &header)
+	decrypted := decryptFileAESGCM(t, file)
 
-	fmt.Printf("Encrypted file content (hex): %x\n", fileAESGCM.Ciphertext)
+	fmt.Printf("Encrypted file content (hex): %x\n", file.Ciphertext)
 	fmt.Printf("Decrypted file content (hex): %s\n", decrypted)
 }
 
 /* XChaCha20Poly1305 */
 
-func encryptFileXChaCha20Poly1305(t *testing.T, headerXChaCha20Poly1305 *format.HeaderXChaCha20Poly1305) format.FileXChaCha20Poly1305 {
+func encryptFileXChaCha20Poly1305(t *testing.T, header *format.HeaderSymmetric) format.FileSymmetric {
 	var derivedKey, ciphertext []byte
 	var err error
 
-	if err := headerXChaCha20Poly1305.IsValid(); err != nil {
-		t.Fatalf("XChaCha20Poly1305 isn't valid: %v\n", err)
+	if err := header.IsValid(); err != nil {
+		t.Fatalf("HeaderSymmetric isn't valid: %v\n", err)
 	}
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, headerXChaCha20Poly1305.Salt[:], encryption.KDFProfileArgon2idDefault)
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
 
-	ciphertext, err = encryption.EncryptXChaCha20Poly1305(default_msg_content, derivedKey, headerXChaCha20Poly1305.Nonce[:])
+	ciphertext, err = encryption.EncryptXChaCha20Poly1305(default_msg_content, derivedKey, header.Nonce[:header.NonceSize()])
 
 	if err != nil {
-		t.Fatalf("AES-GCM encryption has failed: %v\n", err)
+		t.Fatalf("XChaCha20Poly1305 encryption has failed: %v\n", err)
 	}
 
-	return format.FileXChaCha20Poly1305{
-		Header:     *headerXChaCha20Poly1305,
+	return format.FileSymmetric{
+		Header:     *header,
 		Ciphertext: ciphertext,
 	}
 }
 
-func decryptFileXChaCha20Poly1305(t *testing.T, fileXChaCha20Poly1305 format.FileXChaCha20Poly1305) []byte {
+func decryptFileXChaCha20Poly1305(t *testing.T, file format.FileSymmetric) []byte {
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, fileXChaCha20Poly1305.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	plaintext, err = encryption.DecryptXChaCha20Poly1305(fileXChaCha20Poly1305.Ciphertext, derivedKey, fileXChaCha20Poly1305.Header.Nonce[:])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, file.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
+	plaintext, err = encryption.DecryptXChaCha20Poly1305(file.Ciphertext, derivedKey, file.Header.Nonce[:file.Header.NonceSize()])
 
 	if err != nil {
-		t.Fatalf("AES-GCM decryption has failed: %v\n", err)
+		t.Fatalf("XChaCha20Poly1305 decryption has failed: %v\n", err)
 	}
 
 	if !bytes.Equal(plaintext, default_msg_content) {
@@ -111,15 +125,47 @@ func decryptFileXChaCha20Poly1305(t *testing.T, fileXChaCha20Poly1305 format.Fil
 }
 
 func TestFileXChaCha20Poly1305(t *testing.T) {
-	var headerXChaCha20Poly1305 format.HeaderXChaCha20Poly1305 = format.HeaderXChaCha20Poly1305{
-		Magic:   format.MagicBytes,
-		Version: format.Version,
-		Salt:    [16]byte(encryption.GenerateSalt()),
-		Nonce:   [24]byte(encryption.GenerateNonceXChaCha20Poly1305()),
-	}
-	var fileXChaCha20Poly1305 format.FileXChaCha20Poly1305 = encryptFileXChaCha20Poly1305(t, &headerXChaCha20Poly1305)
-	var plaintext []byte = decryptFileXChaCha20Poly1305(t, fileXChaCha20Poly1305)
+	header := newHeaderSymmetric(format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305())
+	file := encryptFileXChaCha20Poly1305(t, &header)
+	plaintext := decryptFileXChaCha20Poly1305(t, file)
 
-	fmt.Printf("Encrypted file content (hex): %x\n", fileXChaCha20Poly1305.Ciphertext)
+	fmt.Printf("Encrypted file content (hex): %x\n", file.Ciphertext)
 	fmt.Printf("Decrypted file content (hex): %s\n", plaintext)
+}
+
+/* WriteTo / ReadFrom round-trip */
+
+func TestHeaderSymmetricWriteReadRoundTrip(t *testing.T) {
+	cases := []struct {
+		name  string
+		algo  uint8
+		nonce []byte
+	}{
+		{"AESGCM", format.AlgoAESGCM, encryption.GenerateNonceAESGCM()},
+		{"XChaCha20Poly1305", format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305()},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			original := newHeaderSymmetric(c.algo, c.nonce)
+
+			var buf bytes.Buffer
+			if _, err := original.WriteTo(&buf); err != nil {
+				t.Fatalf("WriteTo has failed: %v\n", err)
+			}
+
+			var roundTripped format.HeaderSymmetric
+			if _, err := roundTripped.ReadFrom(&buf); err != nil {
+				t.Fatalf("ReadFrom has failed: %v\n", err)
+			}
+
+			if roundTripped != original {
+				t.Fatalf("round-tripped header differs from original\noriginal: %+v\ngot:      %+v\n", original, roundTripped)
+			}
+
+			if err := roundTripped.IsValid(); err != nil {
+				t.Fatalf("round-tripped header is invalid: %v\n", err)
+			}
+		})
+	}
 }

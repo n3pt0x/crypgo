@@ -47,7 +47,7 @@ func TestAesEncrypt(t *testing.T) {
 }
 
 func TestAesDecrypt(t *testing.T) {
-	plaintext_decrypted, err := encryption.DecryptAESCGM(ciphertext, derivedKey, aesNonce)
+	plaintext_decrypted, err := encryption.DecryptAESGCM(ciphertext, derivedKey, aesNonce)
 
 	if err != nil {
 		t.Fatal(err)
@@ -82,4 +82,38 @@ func TestDecryptXChaCha20Poly1305(t *testing.T) {
 	}
 
 	fmt.Printf("[Success] Original plaintext recover: %s\n", plaintext_decrypted)
+}
+
+func TestKDFProfileParams(t *testing.T) {
+	params, ok := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
+	if !ok {
+		t.Fatalf("[Error] Known profile %d reported as unknown\n", encryption.KDFProfileArgon2idDefault)
+	}
+
+	want := encryption.Argon2Params{Time: 3, Memory: 64 * 1024, Threads: 4}
+	if params != want {
+		t.Fatalf("[Error] Profile params = %+v, want %+v\n", params, want)
+	}
+
+	if _, ok := encryption.KDFProfileParams(0xFF); ok {
+		t.Fatal("[Error] Unknown profile 0xFF reported as known\n")
+	}
+}
+
+func TestDerivedKeyArgon2IDWithParams(t *testing.T) {
+	params, ok := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
+	if !ok {
+		t.Fatalf("[Error] Known profile %d reported as unknown\n", encryption.KDFProfileArgon2idDefault)
+	}
+
+	keyFromProfile := encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
+	keyFromParams := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, params)
+
+	if key_s := len(keyFromParams); key_s != encryption.KeySize {
+		t.Fatalf("[Error] Derived key has: %d bytes, but she must makes %d bytes\n", key_s, encryption.KeySize)
+	}
+
+	if !bytes.Equal(keyFromProfile, keyFromParams) {
+		t.Fatal("[Error] DerivedKeyArgon2IDWithParams produced a different key than DerivedKeyArgon2ID for the same params\n")
+	}
 }

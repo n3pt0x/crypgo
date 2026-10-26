@@ -2,10 +2,10 @@ package encryption
 
 const (
 	SaltSize                   = 16
-	NonceSizeAESGCM            = 12 // AES-CGM nonce size 2^96
+	NonceSizeAESGCM            = 12 // AES-GCM nonce size 2^96
 	NonceSizeXChaCha20Poly1305 = 24 // XChaCha nonce size 2^192
-	KeySize                    = 32 // AES-CGM (256 bits), ChaCha20-Poly1305 (256 bits)
-	CGMTagSize                 = 16
+	KeySize                    = 32 // AES-GCM (256 bits), ChaCha20-Poly1305 (256 bits)
+	GCMTagSize                 = 16
 )
 
 const (
@@ -20,4 +20,9 @@ type Argon2Params struct {
 
 var kdfProfiles = map[uint8]Argon2Params{
 	KDFProfileArgon2idDefault: {Time: 3, Memory: 64 * 1024, Threads: 4},
+}
+
+func KDFProfileParams(profile uint8) (Argon2Params, bool) {
+	params, ok := kdfProfiles[profile]
+	return params, ok
 }

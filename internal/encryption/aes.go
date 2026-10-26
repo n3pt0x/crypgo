@@ -19,7 +19,7 @@ func EncryptAESGCM(plaintext []byte, key []byte, nonce []byte) ([]byte, error) {
 	return aesgcm.Seal(nil, nonce, plaintext, nil), nil
 }
 
-func DecryptAESCGM(ciphertext []byte, key []byte, nonce []byte) ([]byte, error) {
+func DecryptAESGCM(ciphertext []byte, key []byte, nonce []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
