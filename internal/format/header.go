@@ -26,8 +26,8 @@ const (
 
 const (
 	// Mode
-	Symetric  = 0x01
-	Asymetric = 0x02
+	Symmetric  = 0x01
+	Asymmetric = 0x02
 )
 
 type Header interface {
@@ -45,15 +45,14 @@ type HeaderSymmetric struct {
 	KDFMemory      uint32
 	KDFThreads     uint8
 	Salt           [encryption.SaltSize]byte
-	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte // AES-GCM use only 12 first bytes
+	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte // (24 bytes stored), but AES-GCM use only 12 first bytes
 }
 
-type FileSymmetric struct {
-	Header     HeaderSymmetric
-	Ciphertext []byte
-}
+// A symmetric file on disk is the fixed-size HeaderSymmetric written via
+// WriteTo, immediately followed by the raw ciphertext up to EOF (no length
+// field).
 
-// type HeaderAsymetricXChaCha20Poly1305 struct {
+// type HeaderAsymmetricXChaCha20Poly1305 struct {
 // 	Magic              [6]byte
 // 	Version            uint8
 // 	Mode               uint8

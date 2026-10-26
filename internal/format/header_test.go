@@ -18,7 +18,7 @@ func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 	h := format.HeaderSymmetric{
 		Magic:          format.MagicBytes,
 		Version:        format.Version,
-		Mode:           format.Symetric,
+		Mode:           format.Symmetric,
 		EncryptionAlgo: algo,
 		KDFProfile:     encryption.KDFProfileArgon2idDefault,
 		KDFTime:        kdfParams.Time,
@@ -33,7 +33,7 @@ func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 
 /* AES-256 GCM */
 
-func encryptFileAESGCM(t *testing.T, header *format.HeaderSymmetric) format.FileSymmetric {
+func encryptFileAESGCM(t *testing.T, header *format.HeaderSymmetric) []byte {
 	var derivedKey, ciphertext []byte
 	var err error
 
@@ -49,18 +49,15 @@ func encryptFileAESGCM(t *testing.T, header *format.HeaderSymmetric) format.File
 		t.Fatalf("AES-GCM encryption has failed: %v\n", err)
 	}
 
-	return format.FileSymmetric{
-		Header:     *header,
-		Ciphertext: ciphertext,
-	}
+	return ciphertext
 }
 
-func decryptFileAESGCM(t *testing.T, file format.FileSymmetric) []byte {
+func decryptFileAESGCM(t *testing.T, header format.HeaderSymmetric, ciphertext []byte) []byte {
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, file.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	plaintext, err = encryption.DecryptAESGCM(file.Ciphertext, derivedKey, file.Header.Nonce[:file.Header.NonceSize()])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
+	plaintext, err = encryption.DecryptAESGCM(ciphertext, derivedKey, header.Nonce[:header.NonceSize()])
 
 	if err != nil {
 		t.Fatalf("AES-GCM decryption has failed: %v\n", err)
@@ -75,16 +72,16 @@ func decryptFileAESGCM(t *testing.T, file format.FileSymmetric) []byte {
 
 func TestFileAESGCM(t *testing.T) {
 	header := newHeaderSymmetric(format.AlgoAESGCM, encryption.GenerateNonceAESGCM())
-	file := encryptFileAESGCM(t, &header)
-	decrypted := decryptFileAESGCM(t, file)
+	ciphertext := encryptFileAESGCM(t, &header)
+	decrypted := decryptFileAESGCM(t, header, ciphertext)
 
-	fmt.Printf("Encrypted file content (hex): %x\n", file.Ciphertext)
+	fmt.Printf("Encrypted file content (hex): %x\n", ciphertext)
 	fmt.Printf("Decrypted file content (hex): %s\n", decrypted)
 }
 
 /* XChaCha20Poly1305 */
 
-func encryptFileXChaCha20Poly1305(t *testing.T, header *format.HeaderSymmetric) format.FileSymmetric {
+func encryptFileXChaCha20Poly1305(t *testing.T, header *format.HeaderSymmetric) []byte {
 	var derivedKey, ciphertext []byte
 	var err error
 
@@ -100,18 +97,15 @@ func encryptFileXChaCha20Poly1305(t *testing.T, header *format.HeaderSymmetric) 
 		t.Fatalf("XChaCha20Poly1305 encryption has failed: %v\n", err)
 	}
 
-	return format.FileSymmetric{
-		Header:     *header,
-		Ciphertext: ciphertext,
-	}
+	return ciphertext
 }
 
-func decryptFileXChaCha20Poly1305(t *testing.T, file format.FileSymmetric) []byte {
+func decryptFileXChaCha20Poly1305(t *testing.T, header format.HeaderSymmetric, ciphertext []byte) []byte {
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, file.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	plaintext, err = encryption.DecryptXChaCha20Poly1305(file.Ciphertext, derivedKey, file.Header.Nonce[:file.Header.NonceSize()])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
+	plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, derivedKey, header.Nonce[:header.NonceSize()])
 
 	if err != nil {
 		t.Fatalf("XChaCha20Poly1305 decryption has failed: %v\n", err)
@@ -126,10 +120,10 @@ func decryptFileXChaCha20Poly1305(t *testing.T, file format.FileSymmetric) []byt
 
 func TestFileXChaCha20Poly1305(t *testing.T) {
 	header := newHeaderSymmetric(format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305())
-	file := encryptFileXChaCha20Poly1305(t, &header)
-	plaintext := decryptFileXChaCha20Poly1305(t, file)
+	ciphertext := encryptFileXChaCha20Poly1305(t, &header)
+	plaintext := decryptFileXChaCha20Poly1305(t, header, ciphertext)
 
-	fmt.Printf("Encrypted file content (hex): %x\n", file.Ciphertext)
+	fmt.Printf("Encrypted file content (hex): %x\n", ciphertext)
 	fmt.Printf("Decrypted file content (hex): %s\n", plaintext)
 }
 
