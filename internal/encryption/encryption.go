@@ -6,9 +6,18 @@ const (
 	NonceSizeXChaCha20Poly1305 = 24 // XChaCha nonce size 2^192
 	KeySize                    = 32 // AES-CGM (256 bits), ChaCha20-Poly1305 (256 bits)
 	CGMTagSize                 = 16
-
-	// Argon2
-	Argon2Time    = 3
-	Argon2Memory  = 64 * 1024 // 64 MiB
-	Argon2Threads = 4
 )
+
+const (
+	KDFProfileArgon2idDefault = 0x01 // 64 MiB, t=3, p=4
+)
+
+type Argon2Params struct {
+	Time    uint32
+	Memory  uint32
+	Threads uint8
+}
+
+var kdfProfiles = map[uint8]Argon2Params{
+	KDFProfileArgon2idDefault: {Time: 3, Memory: 64 * 1024, Threads: 4},
+}

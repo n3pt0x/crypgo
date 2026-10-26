@@ -22,7 +22,7 @@ func encryptFileAESGCM(t *testing.T, headerAESGCM *format.HeaderAESGCM) format.F
 		t.Fatalf("HeaderAESGCM isn't valid: %v\n", err)
 	}
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, headerAESGCM.Salt[:])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, headerAESGCM.Salt[:], encryption.KDFProfileArgon2idDefault)
 
 	ciphertext, err = encryption.EncryptAESGCM(default_msg_content, derivedKey, headerAESGCM.Nonce[:])
 
@@ -40,7 +40,7 @@ func decryptFileAESGCM(t *testing.T, fileAESGCM format.FileAESGCM) []byte {
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, fileAESGCM.Header.Salt[:])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, fileAESGCM.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
 	plaintext, err = encryption.DecryptAESCGM(fileAESGCM.Ciphertext, derivedKey, fileAESGCM.Header.Nonce[:])
 
 	if err != nil {
@@ -78,7 +78,7 @@ func encryptFileXChaCha20Poly1305(t *testing.T, headerXChaCha20Poly1305 *format.
 		t.Fatalf("XChaCha20Poly1305 isn't valid: %v\n", err)
 	}
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, headerXChaCha20Poly1305.Salt[:])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, headerXChaCha20Poly1305.Salt[:], encryption.KDFProfileArgon2idDefault)
 
 	ciphertext, err = encryption.EncryptXChaCha20Poly1305(default_msg_content, derivedKey, headerXChaCha20Poly1305.Nonce[:])
 
@@ -96,7 +96,7 @@ func decryptFileXChaCha20Poly1305(t *testing.T, fileXChaCha20Poly1305 format.Fil
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, fileXChaCha20Poly1305.Header.Salt[:])
+	derivedKey = encryption.DerivedKeyArgon2ID(passphrase, fileXChaCha20Poly1305.Header.Salt[:], encryption.KDFProfileArgon2idDefault)
 	plaintext, err = encryption.DecryptXChaCha20Poly1305(fileXChaCha20Poly1305.Ciphertext, derivedKey, fileXChaCha20Poly1305.Header.Nonce[:])
 
 	if err != nil {

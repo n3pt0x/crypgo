@@ -11,14 +11,31 @@ var MagicBytes = [6]byte{'C', 'R', 'Y', 'P', 'G', 'O'}
 
 const (
 	Version = 1
-	TagCGM  = 16
+	TagGCM  = 16
+)
+
+const (
+	// symetric
+	AlgoAESGCM            = 0x01
+	AlgoXChaCha20Poly1305 = 0x02
+
+	// asymetric
+)
+
+const (
+	// mode
+	symetric  = 0x01
+	asymetric = 0x02
 )
 
 type HeaderAESGCM struct {
-	Magic   [6]byte
-	Version uint8
-	Salt    [encryption.SaltSize]byte
-	Nonce   [encryption.NonceSizeAESGCM]byte
+	Magic          [6]byte
+	Version        uint8
+	Mode           uint8
+	EncryptionAlgo uint8
+	KDFProfile     uint8
+	Salt           [encryption.SaltSize]byte
+	Nonce          [encryption.NonceSizeAESGCM]byte
 }
 
 type FileAESGCM struct {
@@ -27,15 +44,30 @@ type FileAESGCM struct {
 }
 
 type HeaderXChaCha20Poly1305 struct {
-	Magic   [6]byte
-	Version uint8
-	Salt    [encryption.SaltSize]byte
-	Nonce   [encryption.NonceSizeXChaCha20Poly1305]byte
+	Magic          [6]byte
+	Version        uint8
+	Mode           uint8
+	EncryptionAlgo uint8
+	KDFProfile     uint8
+	Salt           [encryption.SaltSize]byte
+	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte
 }
 
 type FileXChaCha20Poly1305 struct {
 	Header     HeaderXChaCha20Poly1305
 	Ciphertext []byte
+}
+
+type HeaderAsymetricXChaCha20Poly1305 struct {
+	Magic              [6]byte
+	Version            uint8
+	Mode               uint8
+	EncryptionAlgo     uint8
+	KeyAlgo            uint8
+	EphemeralPublicKey [32]byte
+	NonceKey           [encryption.NonceSizeXChaCha20Poly1305]byte
+	WrappedKey         [32]byte
+	Nonce              [encryption.NonceSizeXChaCha20Poly1305]byte
 }
 
 // Errors

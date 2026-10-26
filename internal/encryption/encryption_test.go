@@ -26,7 +26,7 @@ func TestSaltAndNonce(t *testing.T) {
 }
 
 func TestDerivedKeyArgon2ID(t *testing.T) {
-	derivedKey = encryption.DerivedKeyArgon2ID([]byte("test"), salt)
+	derivedKey = encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
 
 	if key_s := len(derivedKey); key_s != encryption.KeySize {
 		t.Fatalf("[Error] Dereived key has: %d bytes, but she must makes %d bytes\n", key_s, encryption.KeySize)
