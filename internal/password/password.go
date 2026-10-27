@@ -6,17 +6,13 @@ import (
 )
 
 var (
-	ErrTooShort = errors.New("The passphrase is too short")
-	ErrEmpty    = errors.New("The passphrase is empty")
+	ErrTooShort   = errors.New("The passphrase is too short")
+	ErroMatchFail = errors.New("The passphrases must be identical")
 )
 
 const minLength = 12
 
 func Validate(passphrase []byte) error {
-	if len(passphrase) == 0 {
-		return ErrEmpty
-	}
-
 	if len(passphrase) < minLength {
 		return ErrTooShort
 	}
