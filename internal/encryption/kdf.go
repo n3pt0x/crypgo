@@ -8,8 +8,8 @@ import (
 
 var ErrUnknownKDFProfile = errors.New("encryption: unknown KDF profile")
 
-func DerivedKeyArgon2ID(passphrase []byte, salt []byte, KDFprofile uint8) ([]byte, error) {
-	params, ok := kdfProfiles[KDFprofile]
+func DerivedKeyArgon2ID(passphrase []byte, salt []byte, profile uint8) ([]byte, error) {
+	params, ok := KdfProfiles[profile]
 	if !ok {
 		return nil, ErrUnknownKDFProfile
 	}
