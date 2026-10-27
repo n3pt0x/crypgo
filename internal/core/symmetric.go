@@ -5,27 +5,33 @@ import (
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
+	"github.com/n3pt0x/crypgo/internal/fileio"
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, KDFprofile uint8) (bytes.Buffer, error) {
+func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8) (bytes.Buffer, error) {
 	var salt []byte = encryption.GenerateSalt()
 	var nonce, ciphertext []byte
 
 	var header format.HeaderSymmetric
 
-	derivedKey, err := encryption.DerivedKeyArgon2ID(passphrase, salt, KDFprofile)
-	if err != nil {
-		return bytes.Buffer{}, err
+	// Resolve the profile once: the same params are used to derive the key
+	// and to fill the header, so they can never diverge.
+	kdfParams, ok := encryption.KDFProfileParams(profile)
+	if !ok {
+		return bytes.Buffer{}, encryption.ErrUnknownKDFProfile
 	}
 
+	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, kdfParams)
+
+	var err error
 	switch algo {
 	case format.AlgoAESGCM:
 		nonce = encryption.GenerateNonceAESGCM()
-		ciphertext, err = encryption.EncryptAESGCM(data, derivedKey, nonce)
+		ciphertext, err = encryption.EncryptAESGCM(data, key, nonce)
 	case format.AlgoXChaCha20Poly1305:
 		nonce = encryption.GenerateNonceXChaCha20Poly1305()
-		ciphertext, err = encryption.EncryptXChaCha20Poly1305(data, derivedKey, nonce)
+		ciphertext, err = encryption.EncryptXChaCha20Poly1305(data, key, nonce)
 	}
 
 	if err != nil {
@@ -36,7 +42,10 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, KDFprofile uin
 	header.Version = format.Version
 	header.Mode = format.Symmetric
 	header.EncryptionAlgo = algo
-	header.KDFProfile = KDFprofile
+	header.KDFProfile = profile
+	header.KDFTime = kdfParams.Time
+	header.KDFMemory = kdfParams.Memory
+	header.KDFThreads = kdfParams.Threads
 	header.Salt = [16]byte(salt)
 	copy(header.Nonce[:], nonce) // For AES-GCM, go add 12 bytes (0x00) for padding
 
@@ -44,7 +53,7 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, KDFprofile uin
 
 	err = header.IsValid()
 	if err != nil {
-		return bytes.Buffer{}, format.ErrInvalidheader
+		return bytes.Buffer{}, err
 	}
 
 	_, err = header.WriteTo(&buf)
@@ -61,7 +70,7 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, KDFprofile uin
 }
 
 func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
-	var ciphertext, plaintext, derivedKey []byte
+	var ciphertext, plaintext []byte
 	var header format.HeaderSymmetric
 	var r *bytes.Reader = bytes.NewReader(data)
 
@@ -71,22 +80,25 @@ func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
 	}
 
 	if err := header.IsValid(); err != nil {
-		return nil, format.ErrInvalidheader
+		return nil, err
 	}
 
 	ciphertext, err = io.ReadAll(r)
 	if err != nil {
-		return nil, err
+		return nil, fileio.ErrEmptyFile
 	}
 
-	derivedKey = encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads})
+	// Params come from the header (already bounds-checked by IsValid), not
+	// from the profile table, so files stay decryptable if a profile changes.
+	kdfParams := encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads}
+	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
 	nonce := header.Nonce[:header.NonceSize()]
 
 	switch header.EncryptionAlgo {
 	case format.AlgoAESGCM:
-		plaintext, err = encryption.DecryptAESGCM(ciphertext, derivedKey, nonce)
+		plaintext, err = encryption.DecryptAESGCM(ciphertext, key, nonce)
 	case format.AlgoXChaCha20Poly1305:
-		plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, derivedKey, nonce)
+		plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, key, nonce)
 	}
 
 	if err != nil {

@@ -1,4 +1,4 @@
-package io
+package fileio
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 
 var (
 	ErrFileNotFound = errors.New("The file doesn't exist")
+	ErrEmptyFile    = errors.New("The file is empty")
 )
 
 func FileExist(path string) error {
