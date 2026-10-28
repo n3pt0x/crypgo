@@ -1,16 +1,29 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
 const (
-	Version = 0.1
+	Version = "0.1"
+)
+
+var (
+	rootVersion bool
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "crypgo",
 	Short: "CLI to encrypt / decrypt file and message",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if rootVersion {
+			fmt.Printf("%s\n", Version)
+		}
+
+		return nil
+	},
 }
 
 func Execute() error {
@@ -19,4 +32,5 @@ func Execute() error {
 }
 
 func init() {
+	rootCmd.Flags().BoolVar(&rootVersion, "version", false, "show version")
 }
