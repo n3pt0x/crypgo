@@ -2,26 +2,12 @@ package format_test
 
 import (
 	"bytes"
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
 )
-
-var passphrase []byte = []byte("test")
-var default_msg_content []byte = []byte("My super secret message !!!")
-
-func deriveKey(t *testing.T, salt []byte) []byte {
-	t.Helper()
-
-	params, ok := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
-	if !ok {
-		t.Fatal("default KDF profile is unknown")
-	}
-
-	return encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, params)
-}
 
 func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 	kdfParams, _ := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
@@ -41,104 +27,6 @@ func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 	return h
 }
 
-/* AES-256 GCM */
-
-func encryptFileAESGCM(t *testing.T, header *format.HeaderSymmetric) []byte {
-	var derivedKey, ciphertext []byte
-	var err error
-
-	if err := header.IsValid(); err != nil {
-		t.Fatalf("HeaderSymmetric isn't valid: %v\n", err)
-	}
-
-	derivedKey = deriveKey(t, header.Salt[:])
-
-	ciphertext, err = encryption.EncryptAESGCM(default_msg_content, derivedKey, header.Nonce[:header.NonceSize()])
-
-	if err != nil {
-		t.Fatalf("AES-GCM encryption has failed: %v\n", err)
-	}
-
-	return ciphertext
-}
-
-func decryptFileAESGCM(t *testing.T, header format.HeaderSymmetric, ciphertext []byte) []byte {
-	var derivedKey, plaintext []byte
-	var err error
-
-	derivedKey = deriveKey(t, header.Salt[:])
-	plaintext, err = encryption.DecryptAESGCM(ciphertext, derivedKey, header.Nonce[:header.NonceSize()])
-
-	if err != nil {
-		t.Fatalf("AES-GCM decryption has failed: %v\n", err)
-	}
-
-	if !bytes.Equal(plaintext, default_msg_content) {
-		t.Fatal("decryptFileAESGCM() has failed, plaintext has not been recover\n")
-	}
-
-	return plaintext
-}
-
-func TestFileAESGCM(t *testing.T) {
-	header := newHeaderSymmetric(format.AlgoAESGCM, encryption.GenerateNonceAESGCM())
-	ciphertext := encryptFileAESGCM(t, &header)
-	decrypted := decryptFileAESGCM(t, header, ciphertext)
-
-	fmt.Printf("Encrypted file content (hex): %x\n", ciphertext)
-	fmt.Printf("Decrypted file content (hex): %s\n", decrypted)
-}
-
-/* XChaCha20Poly1305 */
-
-func encryptFileXChaCha20Poly1305(t *testing.T, header *format.HeaderSymmetric) []byte {
-	var derivedKey, ciphertext []byte
-	var err error
-
-	if err := header.IsValid(); err != nil {
-		t.Fatalf("HeaderSymmetric isn't valid: %v\n", err)
-	}
-
-	derivedKey = deriveKey(t, header.Salt[:])
-
-	ciphertext, err = encryption.EncryptXChaCha20Poly1305(default_msg_content, derivedKey, header.Nonce[:header.NonceSize()])
-
-	if err != nil {
-		t.Fatalf("XChaCha20Poly1305 encryption has failed: %v\n", err)
-	}
-
-	return ciphertext
-}
-
-func decryptFileXChaCha20Poly1305(t *testing.T, header format.HeaderSymmetric, ciphertext []byte) []byte {
-	var derivedKey, plaintext []byte
-	var err error
-
-	derivedKey = deriveKey(t, header.Salt[:])
-	plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, derivedKey, header.Nonce[:header.NonceSize()])
-
-	if err != nil {
-		t.Fatalf("XChaCha20Poly1305 decryption has failed: %v\n", err)
-	}
-
-	if !bytes.Equal(plaintext, default_msg_content) {
-		t.Fatal("decryptFileXChaCha20Poly1305() has failed, plaintext has not been recover\n")
-	}
-
-	return plaintext
-}
-
-func TestFileXChaCha20Poly1305(t *testing.T) {
-	header := newHeaderSymmetric(format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305())
-	ciphertext := encryptFileXChaCha20Poly1305(t, &header)
-	plaintext := decryptFileXChaCha20Poly1305(t, header, ciphertext)
-
-	fmt.Printf("Encrypted file content (hex): %x\n", ciphertext)
-	fmt.Printf("Decrypted file content (hex): %s\n", plaintext)
-}
-
-/* WriteTo / ReadFrom round-trip */
-
 func TestHeaderSymmetricWriteReadRoundTrip(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -155,20 +43,66 @@ func TestHeaderSymmetricWriteReadRoundTrip(t *testing.T) {
 
 			var buf bytes.Buffer
 			if _, err := original.WriteTo(&buf); err != nil {
-				t.Fatalf("WriteTo has failed: %v\n", err)
+				t.Fatalf("WriteTo has failed: %v", err)
 			}
 
 			var roundTripped format.HeaderSymmetric
 			if _, err := roundTripped.ReadFrom(&buf); err != nil {
-				t.Fatalf("ReadFrom has failed: %v\n", err)
+				t.Fatalf("ReadFrom has failed: %v", err)
 			}
 
 			if roundTripped != original {
-				t.Fatalf("round-tripped header differs from original\noriginal: %+v\ngot:      %+v\n", original, roundTripped)
+				t.Fatalf("round-tripped header differs from original\noriginal: %+v\ngot:      %+v", original, roundTripped)
 			}
 
 			if err := roundTripped.IsValid(); err != nil {
-				t.Fatalf("round-tripped header is invalid: %v\n", err)
+				t.Fatalf("round-tripped header is invalid: %v", err)
+			}
+		})
+	}
+}
+
+func TestHeaderSymmetricReadFromTruncated(t *testing.T) {
+	var buf bytes.Buffer
+	header := newHeaderSymmetric(format.AlgoAESGCM, encryption.GenerateNonceAESGCM())
+	if _, err := header.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo has failed: %v", err)
+	}
+
+	for _, size := range []int{0, 1, buf.Len() - 1} {
+		var h format.HeaderSymmetric
+		if _, err := h.ReadFrom(bytes.NewReader(buf.Bytes()[:size])); !errors.Is(err, format.ErrTruncated) {
+			t.Errorf("ReadFrom(%d bytes) = %v, want %v", size, err, format.ErrTruncated)
+		}
+	}
+}
+
+func TestHeaderSymmetricIsValid(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(h *format.HeaderSymmetric)
+		want   error
+	}{
+		{"valid", func(h *format.HeaderSymmetric) {}, nil},
+		{"bad magic", func(h *format.HeaderSymmetric) { h.Magic[0] ^= 0xff }, format.ErrInvalidMagic},
+		{"bad version", func(h *format.HeaderSymmetric) { h.Version = 0x7f }, format.ErrUnsupportedVer},
+		{"bad mode", func(h *format.HeaderSymmetric) { h.Mode = 0x7f }, format.ErrInvalidMode},
+		{"bad algo", func(h *format.HeaderSymmetric) { h.EncryptionAlgo = 0x7f }, format.ErrInvalidAlgo},
+		{"memory zero", func(h *format.HeaderSymmetric) { h.KDFMemory = 0 }, format.ErrInvalidKDF},
+		{"memory too high", func(h *format.HeaderSymmetric) { h.KDFMemory = format.MaxKDFMemory + 1 }, format.ErrInvalidKDF},
+		{"time zero", func(h *format.HeaderSymmetric) { h.KDFTime = 0 }, format.ErrInvalidKDF},
+		{"time too high", func(h *format.HeaderSymmetric) { h.KDFTime = format.MaxKDFTime + 1 }, format.ErrInvalidKDF},
+		{"threads zero", func(h *format.HeaderSymmetric) { h.KDFThreads = 0 }, format.ErrInvalidKDF},
+		{"threads too high", func(h *format.HeaderSymmetric) { h.KDFThreads = format.MaxKDFThreads + 1 }, format.ErrInvalidKDF},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHeaderSymmetric(format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305())
+			tt.mutate(&h)
+
+			if err := h.IsValid(); !errors.Is(err, tt.want) {
+				t.Fatalf("IsValid() = %v, want %v", err, tt.want)
 			}
 		})
 	}

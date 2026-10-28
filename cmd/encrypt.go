@@ -79,10 +79,5 @@ func Encrypt(data []byte, algo uint8, profile uint8) ([]byte, error) {
 	}
 	defer password.ZeroBytes(passphrase)
 
-	ciphertext, err := core.EncryptSymmetric(data, passphrase, algo, profile)
-	if err != nil {
-		return nil, err
-	}
-
-	return ciphertext.Bytes(), nil
+	return core.EncryptSymmetric(data, passphrase, algo, profile)
 }

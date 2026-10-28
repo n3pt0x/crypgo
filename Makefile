@@ -19,7 +19,7 @@ clean:
 	go clean
 
 fclean: clean
-		rm -f $(BIN_DIR) $(TARGET)
+		rm -f $(TARGET)
 
 re: fclean all
 

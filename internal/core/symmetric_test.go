@@ -18,12 +18,12 @@ var (
 func encrypt(t *testing.T, algo uint8) []byte {
 	t.Helper()
 
-	buf, err := core.EncryptSymmetric(testMessage, testPassphrase, algo, encryption.KDFProfileArgon2idDefault)
+	ciphertext, err := core.EncryptSymmetric(testMessage, testPassphrase, algo, encryption.KDFProfileArgon2idDefault)
 	if err != nil {
 		t.Fatalf("EncryptSymmetric has failed: %v", err)
 	}
 
-	return buf.Bytes()
+	return ciphertext
 }
 
 func TestSymmetricRoundTrip(t *testing.T) {

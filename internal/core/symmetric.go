@@ -8,7 +8,7 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8) (bytes.Buffer, error) {
+func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8) ([]byte, error) {
 	var salt []byte = encryption.GenerateSalt()
 	var nonce, ciphertext []byte
 
@@ -16,7 +16,7 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 
 	kdfParams, ok := encryption.KDFProfileParams(profile)
 	if !ok {
-		return bytes.Buffer{}, encryption.ErrUnknownKDFProfile
+		return nil, encryption.ErrUnknownKDFProfile
 	}
 
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, kdfParams)
@@ -30,11 +30,11 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 		nonce = encryption.GenerateNonceXChaCha20Poly1305()
 		ciphertext, err = encryption.EncryptXChaCha20Poly1305(data, key, nonce)
 	default:
-		return bytes.Buffer{}, format.ErrInvalidAlgo
+		return nil, format.ErrInvalidAlgo
 	}
 
 	if err != nil {
-		return bytes.Buffer{}, encryption.ErrEncryptionFailed
+		return nil, encryption.ErrEncryptionFailed
 	}
 
 	header.Magic = format.MagicBytes
@@ -51,20 +51,20 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 
 	err = header.IsValid()
 	if err != nil {
-		return bytes.Buffer{}, err
+		return nil, err
 	}
 
 	_, err = header.WriteTo(&buf)
 	if err != nil {
-		return bytes.Buffer{}, err
+		return nil, err
 	}
 
 	_, err = buf.Write(ciphertext)
 	if err != nil {
-		return bytes.Buffer{}, err
+		return nil, err
 	}
 
-	return buf, nil
+	return buf.Bytes(), nil
 }
 
 func parseSymmetric(data []byte) (format.HeaderSymmetric, []byte, error) {
