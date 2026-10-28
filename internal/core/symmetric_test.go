@@ -81,3 +81,15 @@ func TestDecryptSymmetricErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifySymmetric(t *testing.T) {
+	valid := encrypt(t, format.AlgoAESGCM)
+
+	if err := core.VerifySymmetric(valid, testPassphrase); err != nil {
+		t.Fatalf("VerifySymmetric(valid) = %v, want nil", err)
+	}
+
+	if err := core.VerifySymmetric(valid, []byte("wrong passphrase")); !errors.Is(err, encryption.ErrDecryptionFailed) {
+		t.Fatalf("VerifySymmetric(wrong passphrase) = %v, want %v", err, encryption.ErrDecryptionFailed)
+	}
+}
