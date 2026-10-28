@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/fileio"
@@ -33,12 +34,19 @@ func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
+func ttyPath() string {
+	if runtime.GOOS == "windows" {
+		return "CONIN$"
+	}
+	return "/dev/tty"
+}
+
 func passphraseTerminal() (*os.File, error) {
 	if isTerminal(os.Stdin) {
 		return os.Stdin, nil
 	}
 
-	tty, err := os.Open("/dev/tty")
+	tty, err := os.OpenFile(ttyPath(), os.O_RDWR, 0)
 	if err != nil {
 		return nil, ErrNoTerminal
 	}
