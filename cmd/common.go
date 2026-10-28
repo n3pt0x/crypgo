@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bytes"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -120,7 +120,7 @@ func readPassphrase(confirm bool) ([]byte, error) {
 		return nil, err
 	}
 
-	if !bytes.Equal(passphrase, check) {
+	if subtle.ConstantTimeCompare(passphrase, check) != 1 {
 		password.ZeroBytes(passphrase)
 		return nil, password.ErrMismatch
 	}

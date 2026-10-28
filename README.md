@@ -2,8 +2,6 @@
 
 A small command-line tool to encrypt and decrypt files or messages with a passphrase.
 
-> **Status:** `0.1.0`, pre-release. Symmetric encryption only, public-key encryption is planned for `1.1.0`.
-
 ## Features
 
 - Encrypts a file or stdin with **XChaCha20-Poly1305** (default) or **AES-256-GCM**.
@@ -57,7 +55,24 @@ Encrypted data is never printed to a terminal: use `-o <file>` or redirect stdou
 
 ## File format
 
-A 59-byte header (magic `CRYPGO`, version, mode, algorithm, Argon2id parameters, salt, nonce) followed by the ciphertext and its authentication tag.
+All integers are little-endian. A file is a 58-byte header, then the ciphertext followed by its 16-byte authentication tag.
+
+| Offset | Size | Field            | Value                                                     |
+| ------ | ---- | ---------------- | --------------------------------------------------------- |
+| 0      | 6    | Magic            | `CRYPGO`                                                  |
+| 6      | 1    | Version          | `1`                                                       |
+| 7      | 1    | Mode             | `1` (symmetric)                                           |
+| 8      | 1    | Algorithm        | `1` AES-256-GCM, `2` XChaCha20-Poly1305                   |
+| 9      | 4    | Argon2id memory  | in KiB                                                    |
+| 13     | 4    | Argon2id time    | iterations                                                |
+| 17     | 1    | Argon2id threads |                                                           |
+| 18     | 16   | Salt             | random                                                    |
+| 34     | 24   | Nonce            | random. AES-GCM uses the first 12 bytes, the rest is zero |
+
+- The key is Argon2id (version 1.3) of the passphrase and the salt, 32 bytes long.
+- The passphrase is used as the exact UTF-8 bytes typed, without Unicode normalization.
+- No additional authenticated data is used.
+- Version 1 files stay readable by every future version. New modes, algorithms or layouts get a new `Mode`, `Algorithm` or `Version` value, and this layout never changes.
 
 ## Layout
 
