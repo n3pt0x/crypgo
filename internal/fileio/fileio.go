@@ -5,15 +5,22 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 )
 
 var ErrFileNotFound = errors.New("file not found")
 
 func AtomicWriteFile(path string, content []byte) error {
+	// Ctrl-C and SIGTERM are swallowed until the file is renamed, so no temporary file is left behind.
+	deferred := make(chan os.Signal, 1)
+	signal.Notify(deferred, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(deferred)
+
 	dir := filepath.Dir(path)
 
-	f, err := os.CreateTemp(dir, "tmp-*")
+	f, err := os.CreateTemp(dir, ".crypgo-*.tmp")
 	if err != nil {
 		return err
 	}

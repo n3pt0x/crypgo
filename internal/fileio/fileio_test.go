@@ -57,3 +57,23 @@ func TestReadFile(t *testing.T) {
 		t.Fatalf("ReadFile(missing) = %v, want %v", err, fileio.ErrFileNotFound)
 	}
 }
+
+func TestAtomicWriteFileNoLeftoverOnError(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fileio.AtomicWriteFile(target, []byte("x")); err == nil {
+		t.Fatal("AtomicWriteFile over a directory succeeded")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("directory has %d entries, want 1 (temporary file left behind?)", len(entries))
+	}
+}
