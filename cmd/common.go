@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 
@@ -44,6 +45,33 @@ func passphraseTerminal() (*os.File, error) {
 	return tty, nil
 }
 
+func readPassword(fd int) ([]byte, error) {
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, err
+	}
+
+	interrupt := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	signal.Notify(interrupt, os.Interrupt)
+	defer func() {
+		signal.Stop(interrupt)
+		close(done)
+	}()
+
+	go func() {
+		select {
+		case <-interrupt:
+			term.Restore(fd, state)
+			fmt.Fprintln(os.Stderr)
+			os.Exit(130)
+		case <-done:
+		}
+	}()
+
+	return term.ReadPassword(fd)
+}
+
 func ReadPassphrase(confirm bool) ([]byte, error) {
 	tty, err := passphraseTerminal()
 	if err != nil {
@@ -55,7 +83,7 @@ func ReadPassphrase(confirm bool) ([]byte, error) {
 	fd := int(tty.Fd())
 
 	fmt.Fprint(os.Stderr, "Passphrase: ")
-	passphrase, err := term.ReadPassword(fd)
+	passphrase, err := readPassword(fd)
 	fmt.Fprintln(os.Stderr)
 	if err != nil {
 		return nil, err
@@ -75,7 +103,7 @@ func ReadPassphrase(confirm bool) ([]byte, error) {
 	}
 
 	fmt.Fprint(os.Stderr, "Retype your passphrase: ")
-	check, err := term.ReadPassword(fd)
+	check, err := readPassword(fd)
 	fmt.Fprintln(os.Stderr)
 
 	defer password.ZeroBytes(check)
@@ -164,7 +192,6 @@ func resolveOutput(out string, defaultPath string, force bool, terminalOK bool) 
 	case out == "-":
 	case out != "":
 		path = out
-	case !toTerminal:
 	case defaultPath != "":
 		path = defaultPath
 	}

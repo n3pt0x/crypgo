@@ -54,7 +54,7 @@ var decryptCmd = &cobra.Command{
 }
 
 func init() {
-	decryptCmd.Flags().StringVarP(&decryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file> without .crypgo, or stdout when redirected)")
+	decryptCmd.Flags().StringVarP(&decryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file> without .crypgo, or stdout when reading stdin)")
 	decryptCmd.Flags().BoolVarP(&decryptForce, "force", "f", false, "overwrite the output file if it exists")
 	rootCmd.AddCommand(decryptCmd)
 }

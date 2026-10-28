@@ -12,6 +12,17 @@ import (
 var passphrase []byte = []byte("test")
 var default_msg_content []byte = []byte("My super secret message !!!")
 
+func deriveKey(t *testing.T, salt []byte) []byte {
+	t.Helper()
+
+	params, ok := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
+	if !ok {
+		t.Fatal("default KDF profile is unknown")
+	}
+
+	return encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, params)
+}
+
 func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 	kdfParams, _ := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
 
@@ -40,10 +51,7 @@ func encryptFileAESGCM(t *testing.T, header *format.HeaderSymmetric) []byte {
 		t.Fatalf("HeaderSymmetric isn't valid: %v\n", err)
 	}
 
-	derivedKey, err = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	if err != nil {
-		t.Fatalf("key derivation has failed: %v\n", err)
-	}
+	derivedKey = deriveKey(t, header.Salt[:])
 
 	ciphertext, err = encryption.EncryptAESGCM(default_msg_content, derivedKey, header.Nonce[:header.NonceSize()])
 
@@ -58,10 +66,7 @@ func decryptFileAESGCM(t *testing.T, header format.HeaderSymmetric, ciphertext [
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey, err = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	if err != nil {
-		t.Fatalf("key derivation has failed: %v\n", err)
-	}
+	derivedKey = deriveKey(t, header.Salt[:])
 	plaintext, err = encryption.DecryptAESGCM(ciphertext, derivedKey, header.Nonce[:header.NonceSize()])
 
 	if err != nil {
@@ -94,10 +99,7 @@ func encryptFileXChaCha20Poly1305(t *testing.T, header *format.HeaderSymmetric) 
 		t.Fatalf("HeaderSymmetric isn't valid: %v\n", err)
 	}
 
-	derivedKey, err = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	if err != nil {
-		t.Fatalf("key derivation has failed: %v\n", err)
-	}
+	derivedKey = deriveKey(t, header.Salt[:])
 
 	ciphertext, err = encryption.EncryptXChaCha20Poly1305(default_msg_content, derivedKey, header.Nonce[:header.NonceSize()])
 
@@ -112,10 +114,7 @@ func decryptFileXChaCha20Poly1305(t *testing.T, header format.HeaderSymmetric, c
 	var derivedKey, plaintext []byte
 	var err error
 
-	derivedKey, err = encryption.DerivedKeyArgon2ID(passphrase, header.Salt[:], encryption.KDFProfileArgon2idDefault)
-	if err != nil {
-		t.Fatalf("key derivation has failed: %v\n", err)
-	}
+	derivedKey = deriveKey(t, header.Salt[:])
 	plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, derivedKey, header.Nonce[:header.NonceSize()])
 
 	if err != nil {

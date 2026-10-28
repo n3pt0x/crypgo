@@ -2,125 +2,114 @@ package encryption_test
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 )
 
-var salt []byte = encryption.GenerateSalt()
-var aesNonce []byte = encryption.GenerateNonceAESGCM()
-var xchachaNonce []byte = encryption.GenerateNonceXChaCha20Poly1305()
-var derivedKey []byte
-var plaintext []byte = []byte("My super secret message !!!")
-var ciphertext []byte
+var (
+	testKey       = bytes.Repeat([]byte{0x42}, encryption.KeySize)
+	testPlaintext = []byte("My super secret message !!!")
+	cheapParams   = encryption.Argon2Params{Memory: 64, Time: 1, Threads: 1}
+)
 
 func TestSaltAndNonce(t *testing.T) {
-	if salt_s := len(salt); salt_s != encryption.SaltSize {
-		t.Fatalf("[Error] Salt has: %d bytes, but he must makes %d bytes\n", salt_s, encryption.NonceSizeAESGCM)
+	sizes := []struct {
+		name string
+		got  []byte
+		want int
+	}{
+		{"salt", encryption.GenerateSalt(), encryption.SaltSize},
+		{"aes-gcm nonce", encryption.GenerateNonceAESGCM(), encryption.NonceSizeAESGCM},
+		{"xchacha20 nonce", encryption.GenerateNonceXChaCha20Poly1305(), encryption.NonceSizeXChaCha20Poly1305},
 	}
 
-	if nonce_s := len(aesNonce); nonce_s != encryption.NonceSizeAESGCM {
-		t.Fatalf("[Error] Nonce has: %d bytes, but he must makes %d bytes\n", nonce_s, encryption.NonceSizeAESGCM)
-	}
-}
-
-func TestDerivedKeyArgon2ID(t *testing.T) {
-	var err error
-	derivedKey, err = encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
-	if err != nil {
-		t.Fatal(err)
+	for _, s := range sizes {
+		if len(s.got) != s.want {
+			t.Errorf("%s has %d bytes, want %d", s.name, len(s.got), s.want)
+		}
 	}
 
-	if key_s := len(derivedKey); key_s != encryption.KeySize {
-		t.Fatalf("[Error] Dereived key has: %d bytes, but she must makes %d bytes\n", key_s, encryption.KeySize)
-	}
-
-	fmt.Printf("Derived Key (Hex): %x\n", derivedKey)
-}
-
-func TestAesEncrypt(t *testing.T) {
-	var err error
-	ciphertext, err = encryption.EncryptAESGCM(plaintext, derivedKey, aesNonce)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fmt.Printf("File content (hex): %x\n", ciphertext)
-}
-
-func TestAesDecrypt(t *testing.T) {
-	plaintext_decrypted, err := encryption.DecryptAESGCM(ciphertext, derivedKey, aesNonce)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(plaintext, plaintext_decrypted) {
-		t.Fatalf("[Fail] The plaintext decrypted is different of the original plaintext\n Original: %s\nAfter decryption: %s\n", plaintext, plaintext_decrypted)
-	}
-
-	fmt.Printf("[Success] Original plaintext recover: %s\n", plaintext_decrypted)
-}
-
-func TestEncryptXChaCha20Poly1305(t *testing.T) {
-	var err error
-	ciphertext, err = encryption.EncryptXChaCha20Poly1305(plaintext, derivedKey, xchachaNonce)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fmt.Printf("File content (hex): %x\n", ciphertext)
-}
-
-func TestDecryptXChaCha20Poly1305(t *testing.T) {
-	plaintext_decrypted, err := encryption.DecryptXChaCha20Poly1305(ciphertext, derivedKey, xchachaNonce)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(plaintext, plaintext_decrypted) {
-		t.Fatalf("[Fail] The plaintext decrypted is different of the original plaintext\n Original: %s\nAfter decryption: %s\n", plaintext, plaintext_decrypted)
-	}
-
-	fmt.Printf("[Success] Original plaintext recover: %s\n", plaintext_decrypted)
-}
-
-func TestKDFProfileParams(t *testing.T) {
-	params, ok := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
-	if !ok {
-		t.Fatalf("[Error] Known profile %d reported as unknown\n", encryption.KDFProfileArgon2idDefault)
-	}
-
-	want := encryption.Argon2Params{Time: 10, Memory: 256 * 1024, Threads: 4}
-	if params != want {
-		t.Fatalf("[Error] Profile params = %+v, want %+v\n", params, want)
-	}
-
-	if _, ok := encryption.KDFProfileParams(0xFF); ok {
-		t.Fatal("[Error] Unknown profile 0xFF reported as known\n")
+	if bytes.Equal(encryption.GenerateSalt(), encryption.GenerateSalt()) {
+		t.Error("two generated salts are identical")
 	}
 }
 
 func TestDerivedKeyArgon2IDWithParams(t *testing.T) {
-	params, ok := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
-	if !ok {
-		t.Fatalf("[Error] Known profile %d reported as unknown\n", encryption.KDFProfileArgon2idDefault)
+	salt := encryption.GenerateSalt()
+	key := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, cheapParams)
+
+	if len(key) != encryption.KeySize {
+		t.Fatalf("key has %d bytes, want %d", len(key), encryption.KeySize)
 	}
 
-	keyFromProfile, err := encryption.DerivedKeyArgon2ID([]byte("test"), salt, encryption.KDFProfileArgon2idDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyFromParams := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, params)
-
-	if key_s := len(keyFromParams); key_s != encryption.KeySize {
-		t.Fatalf("[Error] Derived key has: %d bytes, but she must makes %d bytes\n", key_s, encryption.KeySize)
+	if again := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, cheapParams); !bytes.Equal(key, again) {
+		t.Error("same inputs produced different keys")
 	}
 
-	if !bytes.Equal(keyFromProfile, keyFromParams) {
-		t.Fatal("[Error] DerivedKeyArgon2IDWithParams produced a different key than DerivedKeyArgon2ID for the same params\n")
+	if other := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), encryption.GenerateSalt(), cheapParams); bytes.Equal(key, other) {
+		t.Error("different salts produced the same key")
+	}
+}
+
+func TestKDFProfileParams(t *testing.T) {
+	profiles := map[string]struct {
+		id   uint8
+		want encryption.Argon2Params
+	}{
+		"default":  {encryption.KDFProfileArgon2idDefault, encryption.Argon2Params{Memory: 256 * 1024, Time: 10, Threads: 4}},
+		"paranoid": {encryption.KDFProfileArgon2idParanoid, encryption.Argon2Params{Memory: 1024 * 1024, Time: 10, Threads: 4}},
+	}
+
+	for name, p := range profiles {
+		got, ok := encryption.KDFProfileParams(p.id)
+		if !ok || got != p.want {
+			t.Errorf("%s profile = %+v, %v; want %+v, true", name, got, ok, p.want)
+		}
+	}
+
+	if _, ok := encryption.KDFProfileParams(0xFF); ok {
+		t.Error("unknown profile 0xFF reported as known")
+	}
+}
+
+func TestAEADRoundTrip(t *testing.T) {
+	ciphers := []struct {
+		name    string
+		nonce   func() []byte
+		encrypt func(plaintext, key, nonce []byte) ([]byte, error)
+		decrypt func(ciphertext, key, nonce []byte) ([]byte, error)
+	}{
+		{"aes-gcm", encryption.GenerateNonceAESGCM, encryption.EncryptAESGCM, encryption.DecryptAESGCM},
+		{"xchacha20", encryption.GenerateNonceXChaCha20Poly1305, encryption.EncryptXChaCha20Poly1305, encryption.DecryptXChaCha20Poly1305},
+	}
+
+	for _, c := range ciphers {
+		t.Run(c.name, func(t *testing.T) {
+			nonce := c.nonce()
+
+			ciphertext, err := c.encrypt(testPlaintext, testKey, nonce)
+			if err != nil {
+				t.Fatalf("encryption has failed: %v", err)
+			}
+
+			plaintext, err := c.decrypt(ciphertext, testKey, nonce)
+			if err != nil {
+				t.Fatalf("decryption has failed: %v", err)
+			}
+			if !bytes.Equal(plaintext, testPlaintext) {
+				t.Fatalf("plaintext = %q, want %q", plaintext, testPlaintext)
+			}
+
+			wrongKey := bytes.Repeat([]byte{0x43}, encryption.KeySize)
+			if _, err := c.decrypt(ciphertext, wrongKey, nonce); err == nil {
+				t.Error("decryption with a wrong key succeeded")
+			}
+
+			ciphertext[0] ^= 0xff
+			if _, err := c.decrypt(ciphertext, testKey, nonce); err == nil {
+				t.Error("decryption of a tampered ciphertext succeeded")
+			}
+		})
 	}
 }

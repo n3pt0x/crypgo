@@ -59,3 +59,27 @@ func TestCheckOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveOutputFileDestination(t *testing.T) {
+	dir := t.TempDir()
+	defaultPath := filepath.Join(dir, "a.txt.crypgo")
+	explicit := filepath.Join(dir, "explicit")
+
+	tests := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{"default path", "", defaultPath},
+		{"explicit output wins", explicit, explicit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dest, err := resolveOutput(tt.out, defaultPath, false, false)
+			if err != nil || dest.path != tt.want {
+				t.Fatalf("resolveOutput = %q, %v; want %q, nil", dest.path, err, tt.want)
+			}
+		})
+	}
+}
