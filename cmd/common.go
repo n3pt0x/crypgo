@@ -42,6 +42,8 @@ func ReadPassphrase(confirm bool) ([]byte, error) {
 	fmt.Fprint(os.Stderr, "Retype your passphrase: ")
 	check, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(os.Stderr)
+	fmt.Println() // add \n
+
 	defer password.ZeroBytes(check)
 	if err != nil {
 		password.ZeroBytes(passphrase)

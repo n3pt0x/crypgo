@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -31,7 +32,13 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
-		return Decrypt(args[0], out)
+		if err := Decrypt(args[0], out); err != nil {
+			return err
+		}
+
+		fmt.Printf("[+] Decrypted file : %s\n", out)
+
+		return nil
 	},
 }
 

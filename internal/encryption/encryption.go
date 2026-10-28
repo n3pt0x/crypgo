@@ -23,7 +23,7 @@ type Argon2Params struct {
 var (
 	// Errors
 	ErrEncryptionFailed = errors.New("Encryption has failed")
-	ErrDecryptionFailed = errors.New("Decryption has failed")
+	ErrDecryptionFailed = errors.New("Decryption has failed (check passphrase)")
 )
 
 var KdfProfiles = map[uint8]Argon2Params{
