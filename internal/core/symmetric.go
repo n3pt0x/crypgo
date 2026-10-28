@@ -19,9 +19,22 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 		return nil, encryption.ErrUnknownKDFProfile
 	}
 
+	header.Magic = format.MagicBytes
+	header.Version = format.Version
+	header.Mode = format.Symmetric
+	header.EncryptionAlgo = algo
+	header.KDFMemory = kdfParams.Memory
+	header.KDFTime = kdfParams.Time
+	header.KDFThreads = kdfParams.Threads
+	header.Salt = [16]byte(salt)
+
+	err := header.IsValid()
+	if err != nil {
+		return nil, err
+	}
+
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, kdfParams)
 
-	var err error
 	switch algo {
 	case format.AlgoAESGCM:
 		nonce = encryption.GenerateNonceAESGCM()
@@ -37,22 +50,9 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 		return nil, encryption.ErrEncryptionFailed
 	}
 
-	header.Magic = format.MagicBytes
-	header.Version = format.Version
-	header.Mode = format.Symmetric
-	header.EncryptionAlgo = algo
-	header.KDFMemory = kdfParams.Memory
-	header.KDFTime = kdfParams.Time
-	header.KDFThreads = kdfParams.Threads
-	header.Salt = [16]byte(salt)
 	copy(header.Nonce[:], nonce) // For AES-GCM, go add 12 bytes (0x00) for padding
 
 	var buf bytes.Buffer
-
-	err = header.IsValid()
-	if err != nil {
-		return nil, err
-	}
 
 	_, err = header.WriteTo(&buf)
 	if err != nil {
