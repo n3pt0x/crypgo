@@ -41,7 +41,6 @@ func init() {
 	rootCmd.AddCommand(decryptCmd)
 }
 
-// Decrypt reads the encrypted file at path, decrypts it and writes the result to out.
 func Decrypt(path string, out string) error {
 	data, err := fileio.ReadFile(path)
 	if err != nil {

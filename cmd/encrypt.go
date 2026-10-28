@@ -53,7 +53,6 @@ func init() {
 	rootCmd.AddCommand(encryptCmd)
 }
 
-// Encrypt reads the file at path, encrypts it and writes the result to out.
 func Encrypt(path string, out string, algo uint8, KDFProfile uint8) error {
 	data, err := fileio.ReadFile(path)
 	if err != nil {

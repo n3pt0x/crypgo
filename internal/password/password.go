@@ -20,6 +20,7 @@ func Validate(passphrase []byte) error {
 	return nil
 }
 
+// ZeroBytes avoid memory where point the passphrase
 func ZeroBytes(passphrase []byte) {
 	for i := range passphrase {
 		passphrase[i] = 0

@@ -67,7 +67,6 @@ func parseAlgo(name string) (uint8, error) {
 	}
 }
 
-// checkOutput refuses to overwrite an existing file unless force is set.
 func checkOutput(path string, force bool) error {
 	if !force && fileio.FileExist(path) == nil {
 		return ErrOutputExists

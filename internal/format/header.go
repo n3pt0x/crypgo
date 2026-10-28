@@ -106,8 +106,6 @@ func (h HeaderSymmetric) IsValid() error {
 	return nil
 }
 
-// NonceSize returns the number of leading bytes of Nonce that are actually
-// used by h.EncryptionAlgo (the rest is zero-padding).
 func (h HeaderSymmetric) NonceSize() int {
 	switch h.EncryptionAlgo {
 	case AlgoAESGCM:
