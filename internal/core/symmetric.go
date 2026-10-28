@@ -6,6 +6,7 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
+	"github.com/n3pt0x/crypgo/internal/password"
 )
 
 func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8) ([]byte, error) {
@@ -34,6 +35,7 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 	}
 
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, kdfParams)
+	defer password.ZeroBytes(key)
 
 	switch algo {
 	case format.AlgoAESGCM:
@@ -105,6 +107,7 @@ func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
 
 	kdfParams := encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads}
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
+	defer password.ZeroBytes(key)
 	nonce := header.Nonce[:header.NonceSize()]
 
 	var plaintext []byte
@@ -126,6 +129,7 @@ func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
 
 // VerifySymmetric checks that data decrypts successfully
 func VerifySymmetric(data []byte, passphrase []byte) error {
-	_, err := DecryptSymmetric(data, passphrase)
+	plaintext, err := DecryptSymmetric(data, passphrase)
+	password.ZeroBytes(plaintext)
 	return err
 }

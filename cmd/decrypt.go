@@ -40,6 +40,7 @@ var decryptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer password.ZeroBytes(plaintext)
 
 		if err := dest.write(plaintext); err != nil {
 			return err

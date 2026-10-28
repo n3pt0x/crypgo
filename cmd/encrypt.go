@@ -35,6 +35,7 @@ var encryptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer password.ZeroBytes(data)
 
 		dest, err := resolveOutput(encryptOutput, defaultPath, encryptForce, false)
 		if err != nil {
