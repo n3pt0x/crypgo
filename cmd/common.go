@@ -23,9 +23,9 @@ var (
 	ErrNoInput      = errors.New("no input: give a file or pipe data on stdin")
 	ErrNoTerminal   = errors.New("no terminal available to read the passphrase")
 	ErrOutputNeeded = errors.New("no output: use --output or redirect stdout (refusing to write to a terminal)")
-	ErrOutputExists = errors.New("the output file already exists, use --force to overwrite it")
-	ErrOutputIsDir  = errors.New("the output path is a directory")
-	ErrEmptyInput   = errors.New("no data received on stdin")
+	ErrOutputExists = errors.New("output file already exists, use --force to overwrite it")
+	ErrOutputIsDir  = errors.New("output path is a directory")
+	ErrEmptyInput   = errors.New("input is empty")
 )
 
 func isTerminal(f *os.File) bool {
@@ -86,7 +86,7 @@ func ReadPassphrase(confirm bool) ([]byte, error) {
 
 	if !bytes.Equal(passphrase, check) {
 		password.ZeroBytes(passphrase)
-		return nil, password.ErroMatchFail
+		return nil, password.ErrMismatch
 	}
 
 	return passphrase, nil
@@ -131,7 +131,7 @@ func readInput(args []string) ([]byte, error) {
 			return nil, err
 		}
 		if len(data) == 0 {
-			return nil, fileio.ErrEmptyFile
+			return nil, ErrEmptyInput
 		}
 		return data, nil
 	}

@@ -13,7 +13,6 @@ var MagicBytes = [6]byte{'C', 'R', 'Y', 'P', 'G', 'O'}
 
 const (
 	Version = 1
-	TagGCM  = 16
 )
 
 const (
@@ -64,13 +63,12 @@ type HeaderSymmetric struct {
 
 // Errors
 var (
-	ErrInvalidMagic   = errors.New("format: magic invalide")
-	ErrUnsupportedVer = errors.New("format: version not supported")
-	ErrInvalidAlgo    = errors.New("format: algorithm unknown")
-	ErrInvalidMode    = errors.New("format: mode unknown")
-	ErrInvalidKDF     = errors.New("format: KDF parameters out of allowed bounds")
-	ErrInvalidheader  = errors.New("format: header isn't valid")
-	ErrTruncated      = errors.New("format: file is truncated or not a crypgo file")
+	ErrInvalidMagic   = errors.New("not a crypgo file (invalid magic bytes)")
+	ErrUnsupportedVer = errors.New("unsupported format version")
+	ErrInvalidAlgo    = errors.New("unknown encryption algorithm")
+	ErrInvalidMode    = errors.New("unknown encryption mode")
+	ErrInvalidKDF     = errors.New("KDF parameters out of allowed bounds")
+	ErrTruncated      = errors.New("file is truncated or not a crypgo file")
 )
 
 func (h HeaderSymmetric) IsValid() error {

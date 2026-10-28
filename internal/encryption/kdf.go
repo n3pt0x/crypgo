@@ -6,10 +6,10 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-var ErrUnknownKDFProfile = errors.New("encryption: unknown KDF profile")
+var ErrUnknownKDFProfile = errors.New("unknown KDF profile")
 
 func DerivedKeyArgon2ID(passphrase []byte, salt []byte, profile uint8) ([]byte, error) {
-	params, ok := KdfProfiles[profile]
+	params, ok := KDFProfileParams(profile)
 	if !ok {
 		return nil, ErrUnknownKDFProfile
 	}

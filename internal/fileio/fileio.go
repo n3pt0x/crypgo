@@ -2,22 +2,13 @@ package fileio
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
 
-var (
-	ErrFileNotFound = errors.New("The file doesn't exist")
-	ErrEmptyFile    = errors.New("The file is empty")
-)
-
-func FileExist(path string) error {
-	_, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return ErrFileNotFound
-	}
-	return err
-}
+var ErrFileNotFound = errors.New("file not found")
 
 func AtomicWriteFile(path string, content []byte) error {
 	dir := filepath.Dir(path)
@@ -47,14 +38,9 @@ func AtomicWriteFile(path string, content []byte) error {
 }
 
 func ReadFile(path string) ([]byte, error) {
-	if FileExist(path) == ErrFileNotFound {
-		return nil, ErrFileNotFound
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%s: %w", path, ErrFileNotFound)
 	}
-
-	file, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return file, nil
+	return data, err
 }

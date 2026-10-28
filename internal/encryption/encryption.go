@@ -21,16 +21,15 @@ type Argon2Params struct {
 }
 
 var (
-	// Errors
-	ErrEncryptionFailed = errors.New("Encryption has failed")
-	ErrDecryptionFailed = errors.New("Decryption has failed (check passphrase)")
+	ErrEncryptionFailed = errors.New("encryption failed")
+	ErrDecryptionFailed = errors.New("wrong passphrase or corrupted file")
 )
 
-var KdfProfiles = map[uint8]Argon2Params{
+var kdfProfiles = map[uint8]Argon2Params{
 	KDFProfileArgon2idDefault: {Time: 3, Memory: 64 * 1024, Threads: 4},
 }
 
 func KDFProfileParams(profile uint8) (Argon2Params, bool) {
-	params, ok := KdfProfiles[profile]
+	params, ok := kdfProfiles[profile]
 	return params, ok
 }

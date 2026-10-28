@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	ErrEmpty      = errors.New("The passphrase is empty")
-	ErrTooShort   = fmt.Errorf("The passphrase is too short (minimum %d characters)", minLength)
-	ErroMatchFail = errors.New("The passphrases must be identical")
+	ErrEmpty    = errors.New("passphrase is empty")
+	ErrTooShort = fmt.Errorf("passphrase is too short (minimum %d characters)", minLength)
+	ErrMismatch = errors.New("passphrases do not match")
 )
 
 const minLength = 12
