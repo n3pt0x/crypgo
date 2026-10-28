@@ -14,8 +14,6 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 
 	var header format.HeaderSymmetric
 
-	// Resolve the profile once: the same params are used to derive the key
-	// and to fill the header, so they can never diverge.
 	kdfParams, ok := encryption.KDFProfileParams(profile)
 	if !ok {
 		return bytes.Buffer{}, encryption.ErrUnknownKDFProfile
@@ -43,9 +41,8 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 	header.Version = format.Version
 	header.Mode = format.Symmetric
 	header.EncryptionAlgo = algo
-	header.KDFProfile = profile
-	header.KDFTime = kdfParams.Time
 	header.KDFMemory = kdfParams.Memory
+	header.KDFTime = kdfParams.Time
 	header.KDFThreads = kdfParams.Threads
 	header.Salt = [16]byte(salt)
 	copy(header.Nonce[:], nonce) // For AES-GCM, go add 12 bytes (0x00) for padding
@@ -106,8 +103,6 @@ func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Params come from the header (already bounds-checked by IsValid), not
-	// from the profile table, so files stay decryptable if a profile changes.
 	kdfParams := encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads}
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
 	nonce := header.Nonce[:header.NonceSize()]

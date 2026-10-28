@@ -20,7 +20,6 @@ func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 		Version:        format.Version,
 		Mode:           format.Symmetric,
 		EncryptionAlgo: algo,
-		KDFProfile:     encryption.KDFProfileArgon2idDefault,
 		KDFTime:        kdfParams.Time,
 		KDFMemory:      kdfParams.Memory,
 		KDFThreads:     kdfParams.Threads,

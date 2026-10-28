@@ -30,8 +30,8 @@ const (
 )
 
 const (
-	MaxKDFTime    = 50
 	MaxKDFMemory  = 2 << 20 // 2 GiB, expressed in KiB (argon2's unit)
+	MaxKDFTime    = 50
 	MinKDFThreads = 1
 	MaxKDFThreads = 64
 )
@@ -41,9 +41,8 @@ type HeaderSymmetric struct {
 	Version        uint8
 	Mode           uint8
 	EncryptionAlgo uint8
-	KDFProfile     uint8
-	KDFTime        uint32
 	KDFMemory      uint32
+	KDFTime        uint32
 	KDFThreads     uint8
 	Salt           [encryption.SaltSize]byte
 	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte // (24 bytes stored), but AES-GCM use only 12 first bytes
@@ -90,11 +89,11 @@ func (h HeaderSymmetric) IsValid() error {
 		return ErrInvalidAlgo
 	}
 
-	if h.KDFTime == 0 || h.KDFTime > MaxKDFTime {
+	if h.KDFMemory == 0 || h.KDFMemory > MaxKDFMemory {
 		return ErrInvalidKDF
 	}
 
-	if h.KDFMemory == 0 || h.KDFMemory > MaxKDFMemory {
+	if h.KDFTime == 0 || h.KDFTime > MaxKDFTime {
 		return ErrInvalidKDF
 	}
 
