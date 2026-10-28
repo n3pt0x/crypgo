@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
-	"github.com/n3pt0x/crypgo/internal/fileio"
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
@@ -32,6 +31,8 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 	case format.AlgoXChaCha20Poly1305:
 		nonce = encryption.GenerateNonceXChaCha20Poly1305()
 		ciphertext, err = encryption.EncryptXChaCha20Poly1305(data, key, nonce)
+	default:
+		return bytes.Buffer{}, format.ErrInvalidAlgo
 	}
 
 	if err != nil {
@@ -69,23 +70,40 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 	return buf, nil
 }
 
-func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
-	var ciphertext, plaintext []byte
+func parseSymmetric(data []byte) (format.HeaderSymmetric, []byte, error) {
 	var header format.HeaderSymmetric
-	var r *bytes.Reader = bytes.NewReader(data)
+	r := bytes.NewReader(data)
 
-	_, err := header.ReadFrom(r)
-	if err != nil {
-		return nil, err
+	if _, err := header.ReadFrom(r); err != nil {
+		return header, nil, err
 	}
 
 	if err := header.IsValid(); err != nil {
-		return nil, err
+		return header, nil, err
 	}
 
-	ciphertext, err = io.ReadAll(r)
+	ciphertext, err := io.ReadAll(r)
 	if err != nil {
-		return nil, fileio.ErrEmptyFile
+		return header, nil, err
+	}
+
+	if len(ciphertext) < encryption.GCMTagSize {
+		return header, nil, format.ErrTruncated
+	}
+
+	return header, ciphertext, nil
+}
+
+// CheckSymmetric validates the header and the size of data, without a passphrase.
+func CheckSymmetric(data []byte) error {
+	_, _, err := parseSymmetric(data)
+	return err
+}
+
+func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
+	header, ciphertext, err := parseSymmetric(data)
+	if err != nil {
+		return nil, err
 	}
 
 	// Params come from the header (already bounds-checked by IsValid), not
@@ -94,11 +112,14 @@ func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
 	nonce := header.Nonce[:header.NonceSize()]
 
+	var plaintext []byte
 	switch header.EncryptionAlgo {
 	case format.AlgoAESGCM:
 		plaintext, err = encryption.DecryptAESGCM(ciphertext, key, nonce)
 	case format.AlgoXChaCha20Poly1305:
 		plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, key, nonce)
+	default:
+		return nil, format.ErrInvalidAlgo
 	}
 
 	if err != nil {

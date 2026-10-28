@@ -16,7 +16,7 @@ func FileExist(path string) error {
 	if os.IsNotExist(err) {
 		return ErrFileNotFound
 	}
-	return nil
+	return err
 }
 
 func AtomicWriteFile(path string, content []byte) error {

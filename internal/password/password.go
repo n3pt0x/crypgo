@@ -2,18 +2,21 @@ package password
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
+	"unicode/utf8"
 )
 
 var (
-	ErrTooShort   = errors.New("The passphrase is too short")
+	ErrEmpty      = errors.New("The passphrase is empty")
+	ErrTooShort   = fmt.Errorf("The passphrase is too short (minimum %d characters)", minLength)
 	ErroMatchFail = errors.New("The passphrases must be identical")
 )
 
 const minLength = 12
 
 func Validate(passphrase []byte) error {
-	if len(passphrase) < minLength {
+	if utf8.RuneCount(passphrase) < minLength {
 		return ErrTooShort
 	}
 

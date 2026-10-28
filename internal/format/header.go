@@ -70,6 +70,7 @@ var (
 	ErrInvalidMode    = errors.New("format: mode unknown")
 	ErrInvalidKDF     = errors.New("format: KDF parameters out of allowed bounds")
 	ErrInvalidheader  = errors.New("format: header isn't valid")
+	ErrTruncated      = errors.New("format: file is truncated or not a crypgo file")
 )
 
 func (h HeaderSymmetric) IsValid() error {
@@ -126,6 +127,9 @@ func (h HeaderSymmetric) WriteTo(w io.Writer) (int64, error) {
 
 func (h *HeaderSymmetric) ReadFrom(r io.Reader) (int64, error) {
 	if err := binary.Read(r, binary.LittleEndian, h); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return 0, ErrTruncated
+		}
 		return 0, err
 	}
 	return int64(binary.Size(h)), nil

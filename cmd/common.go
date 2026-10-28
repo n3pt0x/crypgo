@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/fileio"
@@ -22,6 +24,8 @@ var (
 	ErrNoTerminal   = errors.New("no terminal available to read the passphrase")
 	ErrOutputNeeded = errors.New("no output: use --output or redirect stdout (refusing to write to a terminal)")
 	ErrOutputExists = errors.New("the output file already exists, use --force to overwrite it")
+	ErrOutputIsDir  = errors.New("the output path is a directory")
+	ErrEmptyInput   = errors.New("no data received on stdin")
 )
 
 func isTerminal(f *os.File) bool {
@@ -55,6 +59,10 @@ func ReadPassphrase(confirm bool) ([]byte, error) {
 	fmt.Fprintln(os.Stderr)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(passphrase) == 0 {
+		return nil, password.ErrEmpty
 	}
 
 	if !confirm {
@@ -96,10 +104,18 @@ func parseAlgo(name string) (uint8, error) {
 }
 
 func checkOutput(path string, force bool) error {
-	if !force && fileio.FileExist(path) == nil {
-		return ErrOutputExists
+	info, err := os.Stat(path)
+	switch {
+	case err == nil && info.IsDir():
+		return fmt.Errorf("%s: %w", path, ErrOutputIsDir)
+	case err == nil && !force:
+		return fmt.Errorf("%s: %w", path, ErrOutputExists)
+	case err != nil && !errors.Is(err, fs.ErrNotExist):
+		return err
 	}
-	return nil
+
+	_, err = os.Stat(filepath.Dir(path))
+	return err
 }
 
 // fromStdin reports whether the input is stdin (no file argument, or "-").
@@ -109,23 +125,27 @@ func fromStdin(args []string) bool {
 
 // readInput reads the file given as argument, or stdin when there is none.
 func readInput(args []string) ([]byte, error) {
-	var data []byte
-	var err error
-
-	if fromStdin(args) {
-		if isTerminal(os.Stdin) {
-			return nil, ErrNoInput
+	if !fromStdin(args) {
+		data, err := fileio.ReadFile(args[0])
+		if err != nil {
+			return nil, err
 		}
-		data, err = io.ReadAll(os.Stdin)
-	} else {
-		data, err = fileio.ReadFile(args[0])
+		if len(data) == 0 {
+			return nil, fileio.ErrEmptyFile
+		}
+		return data, nil
 	}
+
+	if isTerminal(os.Stdin) {
+		return nil, ErrNoInput
+	}
+
+	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, err
 	}
-
 	if len(data) == 0 {
-		return nil, fileio.ErrEmptyFile
+		return nil, ErrEmptyInput
 	}
 
 	return data, nil

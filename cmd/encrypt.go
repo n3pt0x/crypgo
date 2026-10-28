@@ -30,12 +30,12 @@ var encryptCmd = &cobra.Command{
 			defaultPath = args[0] + encryptedExt
 		}
 
-		dest, err := resolveOutput(encryptOutput, defaultPath, encryptForce, false)
+		data, err := readInput(args)
 		if err != nil {
 			return err
 		}
 
-		data, err := readInput(args)
+		dest, err := resolveOutput(encryptOutput, defaultPath, encryptForce, false)
 		if err != nil {
 			return err
 		}

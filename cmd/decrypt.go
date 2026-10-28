@@ -24,14 +24,14 @@ var decryptCmd = &cobra.Command{
 			defaultPath = strings.TrimSuffix(args[0], encryptedExt)
 		}
 
-		// Printing a decrypted message to the terminal is fine, but only
-		// when it comes from stdin (a file needs an output path).
-		dest, err := resolveOutput(decryptOutput, defaultPath, decryptForce, fromStdin(args))
+		data, err := readInput(args)
 		if err != nil {
 			return err
 		}
 
-		data, err := readInput(args)
+		// Printing a decrypted message to the terminal is fine, but only
+		// when it comes from stdin (a file needs an output path).
+		dest, err := resolveOutput(decryptOutput, defaultPath, decryptForce, fromStdin(args))
 		if err != nil {
 			return err
 		}
@@ -61,6 +61,10 @@ func init() {
 
 // Decrypt asks for the passphrase and returns the decrypted data.
 func Decrypt(data []byte) ([]byte, error) {
+	if err := core.CheckSymmetric(data); err != nil {
+		return nil, err
+	}
+
 	passphrase, err := ReadPassphrase(false)
 	if err != nil {
 		return nil, err
