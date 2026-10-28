@@ -94,7 +94,7 @@ func TestKDFProfileParams(t *testing.T) {
 		t.Fatalf("[Error] Known profile %d reported as unknown\n", encryption.KDFProfileArgon2idDefault)
 	}
 
-	want := encryption.Argon2Params{Time: 3, Memory: 64 * 1024, Threads: 4}
+	want := encryption.Argon2Params{Time: 10, Memory: 256 * 1024, Threads: 4}
 	if params != want {
 		t.Fatalf("[Error] Profile params = %+v, want %+v\n", params, want)
 	}

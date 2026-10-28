@@ -11,12 +11,13 @@ const (
 )
 
 const (
-	KDFProfileArgon2idDefault = 0x01 // 64 MiB, t=3, p=4
+	KDFProfileArgon2idDefault  = 0x01 // 256 MiB, t=10, p=4
+	KDFProfileArgon2idParanoid = 0x02 // 1 GiB, t=10, p=4
 )
 
 type Argon2Params struct {
-	Time    uint32
 	Memory  uint32
+	Time    uint32
 	Threads uint8
 }
 
@@ -26,7 +27,8 @@ var (
 )
 
 var kdfProfiles = map[uint8]Argon2Params{
-	KDFProfileArgon2idDefault: {Time: 3, Memory: 64 * 1024, Threads: 4},
+	KDFProfileArgon2idDefault:  {Memory: 256 * 1024, Time: 10, Threads: 4},
+	KDFProfileArgon2idParanoid: {Memory: 1024 * 1024, Time: 10, Threads: 4},
 }
 
 func KDFProfileParams(profile uint8) (Argon2Params, bool) {

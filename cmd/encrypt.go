@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	encryptOutput string
-	encryptAlgo   string
-	encryptForce  bool
+	encryptOutput   string
+	encryptAlgo     string
+	encryptParanoid bool
+	encryptForce    bool
 )
 
 var encryptCmd = &cobra.Command{
@@ -40,7 +41,12 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		ciphertext, err := Encrypt(data, algo, encryption.KDFProfileArgon2idDefault)
+		var KDFProfile uint8 = encryption.KDFProfileArgon2idDefault
+		if encryptParanoid {
+			KDFProfile = encryption.KDFProfileArgon2idParanoid
+		}
+
+		ciphertext, err := Encrypt(data, algo, KDFProfile)
 		if err != nil {
 			return err
 		}
@@ -60,6 +66,7 @@ var encryptCmd = &cobra.Command{
 func init() {
 	encryptCmd.Flags().StringVarP(&encryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file>.crypgo, or stdout when redirected)")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
+	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "Hardened KDF argon2id parameters (256 MiB, t=6, p=8)")
 	encryptCmd.Flags().BoolVarP(&encryptForce, "force", "f", false, "overwrite the output file if it exists")
 	rootCmd.AddCommand(encryptCmd)
 }
