@@ -46,7 +46,7 @@ var encryptCmd = &cobra.Command{
 			kdfProfile = encryption.KDFProfileArgon2idParanoid
 		}
 
-		ciphertext, err := Encrypt(data, algo, kdfProfile)
+		ciphertext, err := encrypt(data, algo, kdfProfile)
 		if err != nil {
 			return err
 		}
@@ -71,9 +71,9 @@ func init() {
 	rootCmd.AddCommand(encryptCmd)
 }
 
-// Encrypt asks for a new passphrase and returns the encrypted data.
-func Encrypt(data []byte, algo uint8, profile uint8) ([]byte, error) {
-	passphrase, err := ReadPassphrase(true)
+// encrypt asks for a new passphrase and returns the encrypted data.
+func encrypt(data []byte, algo uint8, profile uint8) ([]byte, error) {
+	passphrase, err := readPassphrase(true)
 	if err != nil {
 		return nil, err
 	}

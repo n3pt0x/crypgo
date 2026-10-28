@@ -20,9 +20,10 @@ var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if rootVersion {
 			fmt.Printf("%s\n", Version)
+			return nil
 		}
 
-		return nil
+		return cmd.Help()
 	},
 }
 

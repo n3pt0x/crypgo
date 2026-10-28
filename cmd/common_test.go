@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/n3pt0x/crypgo/internal/fileio"
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
@@ -79,6 +81,38 @@ func TestResolveOutputFileDestination(t *testing.T) {
 			dest, err := resolveOutput(tt.out, defaultPath, false, false)
 			if err != nil || dest.path != tt.want {
 				t.Fatalf("resolveOutput = %q, %v; want %q, nil", dest.path, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadInputFile(t *testing.T) {
+	dir := t.TempDir()
+	filled := filepath.Join(dir, "filled")
+	empty := filepath.Join(dir, "empty")
+	if err := os.WriteFile(filled, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want []byte
+		err  error
+	}{
+		{"filled file", filled, []byte("data"), nil},
+		{"empty file", empty, nil, ErrEmptyInput},
+		{"missing file", filepath.Join(dir, "missing"), nil, fileio.ErrFileNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := readInput([]string{tt.path})
+			if !errors.Is(err, tt.err) || !bytes.Equal(data, tt.want) {
+				t.Fatalf("readInput = %q, %v; want %q, %v", data, err, tt.want, tt.err)
 			}
 		})
 	}

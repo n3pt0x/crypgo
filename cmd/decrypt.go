@@ -36,7 +36,7 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
-		plaintext, err := Decrypt(data)
+		plaintext, err := decrypt(data)
 		if err != nil {
 			return err
 		}
@@ -59,13 +59,13 @@ func init() {
 	rootCmd.AddCommand(decryptCmd)
 }
 
-// Decrypt asks for the passphrase and returns the decrypted data.
-func Decrypt(data []byte) ([]byte, error) {
+// decrypt asks for the passphrase and returns the decrypted data.
+func decrypt(data []byte) ([]byte, error) {
 	if err := core.CheckSymmetric(data); err != nil {
 		return nil, err
 	}
 
-	passphrase, err := ReadPassphrase(false)
+	passphrase, err := readPassphrase(false)
 	if err != nil {
 		return nil, err
 	}

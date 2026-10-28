@@ -72,7 +72,7 @@ func readPassword(fd int) ([]byte, error) {
 	return term.ReadPassword(fd)
 }
 
-func ReadPassphrase(confirm bool) ([]byte, error) {
+func readPassphrase(confirm bool) ([]byte, error) {
 	tty, err := passphraseTerminal()
 	if err != nil {
 		return nil, err
