@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/n3pt0x/crypgo/internal/core"
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/fileio"
@@ -33,14 +35,21 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		return Encrypt(args[0], out, algo, encryption.KDFProfileArgon2idDefault)
+		err = Encrypt(args[0], out, algo, encryption.KDFProfileArgon2idDefault)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("\n[+] File created %s\n", out)
+
+		return nil
 	},
 }
 
 func init() {
 	encryptCmd.Flags().StringVarP(&encryptOutput, "output", "o", "", "output file (default: <file>.crypgo)")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
-	encryptCmd.Flags().BoolVar(&encryptForce, "force", false, "overwrite the output file if it exists")
+	encryptCmd.Flags().BoolVarP(&encryptForce, "force", "f", false, "overwrite the output file if it exists")
 	rootCmd.AddCommand(encryptCmd)
 }
 
