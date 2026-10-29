@@ -1,7 +1,7 @@
 package core
 
 import (
-	"bytes"
+	"crypto/cipher"
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
@@ -9,15 +9,30 @@ import (
 	"github.com/n3pt0x/crypgo/internal/password"
 )
 
-func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8) ([]byte, error) {
+type Options struct {
+	Workers   int    // chunks processed in parallel, 1 when unset
+	ChunkSize uint32 // plaintext bytes per chunk, format.DefaultChunkSize when unset
+}
+
+func newAEAD(algo uint8, key []byte) (cipher.AEAD, error) {
+	switch algo {
+	case format.AlgoAESGCM:
+		return encryption.NewAESGCM(key)
+	case format.AlgoXChaCha20Poly1305:
+		return encryption.NewXChaCha20Poly1305(key)
+	default:
+		return nil, format.ErrInvalidAlgo
+	}
+}
+
+func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, profile uint8, opts Options) error {
 	var salt []byte = encryption.GenerateSalt()
-	var nonce, ciphertext []byte
 
 	var header format.HeaderSymmetric
 
 	kdfParams, ok := encryption.KDFProfileParams(profile)
 	if !ok {
-		return nil, encryption.ErrUnknownKDFProfile
+		return encryption.ErrUnknownKDFProfile
 	}
 
 	header.Magic = format.MagicBytes
@@ -27,109 +42,59 @@ func EncryptSymmetric(data []byte, passphrase []byte, algo uint8, profile uint8)
 	header.KDFMemory = kdfParams.Memory
 	header.KDFTime = kdfParams.Time
 	header.KDFThreads = kdfParams.Threads
-	header.Salt = [16]byte(salt)
+	header.Salt = [encryption.SaltSize]byte(salt)
+	header.ChunkSize = opts.ChunkSize
+	if header.ChunkSize == 0 {
+		header.ChunkSize = format.DefaultChunkSize
+	}
+	header.NoncePrefix = [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix())
 
-	err := header.IsValid()
-	if err != nil {
-		return nil, err
+	if err := header.IsValid(); err != nil {
+		return err
 	}
 
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, kdfParams)
 	defer password.ZeroBytes(key)
 
-	switch algo {
-	case format.AlgoAESGCM:
-		nonce = encryption.GenerateNonceAESGCM()
-		ciphertext, err = encryption.EncryptAESGCM(data, key, nonce)
-	case format.AlgoXChaCha20Poly1305:
-		nonce = encryption.GenerateNonceXChaCha20Poly1305()
-		ciphertext, err = encryption.EncryptXChaCha20Poly1305(data, key, nonce)
-	default:
-		return nil, format.ErrInvalidAlgo
-	}
-
+	aead, err := newAEAD(algo, key)
 	if err != nil {
-		return nil, encryption.ErrEncryptionFailed
+		return encryption.ErrEncryptionFailed
 	}
 
-	copy(header.Nonce[:], nonce) // For AES-GCM, go add 12 bytes (0x00) for padding
-
-	var buf bytes.Buffer
-
-	_, err = header.WriteTo(&buf)
-	if err != nil {
-		return nil, err
+	if _, err := header.WriteTo(w); err != nil {
+		return err
 	}
 
-	_, err = buf.Write(ciphertext)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	return sealStream(aead, header, r, w, max(opts.Workers, 1))
 }
 
-func parseSymmetric(data []byte) (format.HeaderSymmetric, []byte, error) {
+func ReadHeader(r io.Reader) (format.HeaderSymmetric, error) {
 	var header format.HeaderSymmetric
-	r := bytes.NewReader(data)
 
 	if _, err := header.ReadFrom(r); err != nil {
-		return header, nil, err
+		return header, err
 	}
 
 	if err := header.IsValid(); err != nil {
-		return header, nil, err
+		return header, err
 	}
 
-	ciphertext, err := io.ReadAll(r)
-	if err != nil {
-		return header, nil, err
-	}
-
-	if len(ciphertext) < encryption.GCMTagSize {
-		return header, nil, format.ErrTruncated
-	}
-
-	return header, ciphertext, nil
+	return header, nil
 }
 
-// CheckSymmetric validates the header and the size of data, without a passphrase.
-func CheckSymmetric(data []byte) error {
-	_, _, err := parseSymmetric(data)
-	return err
-}
-
-func DecryptSymmetric(data []byte, passphrase []byte) ([]byte, error) {
-	header, ciphertext, err := parseSymmetric(data)
-	if err != nil {
-		return nil, err
-	}
-
+func DecryptSymmetric(header format.HeaderSymmetric, r io.Reader, w io.Writer, passphrase []byte, workers int) error {
 	kdfParams := encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads}
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
 	defer password.ZeroBytes(key)
-	nonce := header.Nonce[:header.NonceSize()]
 
-	var plaintext []byte
-	switch header.EncryptionAlgo {
-	case format.AlgoAESGCM:
-		plaintext, err = encryption.DecryptAESGCM(ciphertext, key, nonce)
-	case format.AlgoXChaCha20Poly1305:
-		plaintext, err = encryption.DecryptXChaCha20Poly1305(ciphertext, key, nonce)
-	default:
-		return nil, format.ErrInvalidAlgo
-	}
-
+	aead, err := newAEAD(header.EncryptionAlgo, key)
 	if err != nil {
-		return nil, encryption.ErrDecryptionFailed
+		return err
 	}
 
-	return plaintext, nil
+	return openStream(aead, header, r, w, max(workers, 1))
 }
 
-// VerifySymmetric checks that data decrypts successfully
-func VerifySymmetric(data []byte, passphrase []byte) error {
-	plaintext, err := DecryptSymmetric(data, passphrase)
-	password.ZeroBytes(plaintext)
-	return err
+func VerifySymmetric(header format.HeaderSymmetric, r io.Reader, passphrase []byte, workers int) error {
+	return DecryptSymmetric(header, r, io.Discard, passphrase, workers)
 }

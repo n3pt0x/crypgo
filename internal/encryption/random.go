@@ -14,10 +14,6 @@ func GenerateSalt() []byte {
 	return GenerateRandom(SaltSize)
 }
 
-func GenerateNonceAESGCM() []byte {
-	return GenerateRandom(NonceSizeAESGCM)
-}
-
-func GenerateNonceXChaCha20Poly1305() []byte {
-	return GenerateRandom(NonceSizeXChaCha20Poly1305)
+func GenerateNoncePrefix() []byte {
+	return GenerateRandom(NoncePrefixSize)
 }

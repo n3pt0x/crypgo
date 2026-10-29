@@ -33,6 +33,13 @@ const (
 	MaxKDFThreads = 64
 )
 
+const (
+	// Plaintext bytes per chunk. The maximum bounds the memory a header can make us allocate.
+	DefaultChunkSize = 256 << 10
+	MinChunkSize     = 1
+	MaxChunkSize     = 16 << 20
+)
+
 type HeaderSymmetric struct {
 	Magic          [6]byte
 	Version        uint8
@@ -42,7 +49,8 @@ type HeaderSymmetric struct {
 	KDFTime        uint32
 	KDFThreads     uint8
 	Salt           [encryption.SaltSize]byte
-	Nonce          [encryption.NonceSizeXChaCha20Poly1305]byte // (24 bytes stored), but AES-GCM use only 12 first bytes
+	ChunkSize      uint32
+	NoncePrefix    [encryption.NoncePrefixSize]byte // AES-GCM uses only the first 3 bytes
 }
 
 // Errors
@@ -52,6 +60,7 @@ var (
 	ErrInvalidAlgo    = errors.New("unknown encryption algorithm")
 	ErrInvalidMode    = errors.New("unknown encryption mode")
 	ErrInvalidKDF     = errors.New("KDF parameters out of allowed bounds")
+	ErrInvalidChunk   = errors.New("chunk size out of allowed bounds")
 	ErrTruncated      = errors.New("file is truncated or not a crypgo file")
 )
 
@@ -86,18 +95,11 @@ func (h HeaderSymmetric) IsValid() error {
 		return ErrInvalidKDF
 	}
 
-	return nil
-}
-
-func (h HeaderSymmetric) NonceSize() int {
-	switch h.EncryptionAlgo {
-	case AlgoAESGCM:
-		return encryption.NonceSizeAESGCM
-	case AlgoXChaCha20Poly1305:
-		return encryption.NonceSizeXChaCha20Poly1305
-	default:
-		return 0
+	if h.ChunkSize < MinChunkSize || h.ChunkSize > MaxChunkSize {
+		return ErrInvalidChunk
 	}
+
+	return nil
 }
 
 func (h HeaderSymmetric) WriteTo(w io.Writer) (int64, error) {
@@ -105,6 +107,14 @@ func (h HeaderSymmetric) WriteTo(w io.Writer) (int64, error) {
 		return 0, err
 	}
 	return int64(binary.Size(h)), nil
+}
+
+// Bytes returns the serialized header. It is the AAD of every chunk
+// so any change to the header makes decryption fail.
+func (h HeaderSymmetric) Bytes() []byte {
+	var buf bytes.Buffer
+	h.WriteTo(&buf) // a fixed-size struct written to a buffer cannot fail
+	return buf.Bytes()
 }
 
 func (h *HeaderSymmetric) ReadFrom(r io.Reader) (int64, error) {

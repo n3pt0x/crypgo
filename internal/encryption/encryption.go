@@ -11,6 +11,13 @@ const (
 )
 
 const (
+	// A chunk nonce is: random prefix | chunk index | last-chunk flag.
+	NonceCounterSize  = 8
+	NonceLastFlagSize = 1
+	NoncePrefixSize   = NonceSizeXChaCha20Poly1305 - NonceCounterSize - NonceLastFlagSize // AES-GCM uses only the first 3 bytes
+)
+
+const (
 	KDFProfileArgon2idDefault  = 0x01 // 256 MiB, t=10, p=4
 	KDFProfileArgon2idParanoid = 0x02 // 1 GiB, t=10, p=4
 )
