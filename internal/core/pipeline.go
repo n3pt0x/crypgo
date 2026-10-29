@@ -50,6 +50,12 @@ func (p *bufferPool) put(buf []byte) {
 	}
 }
 
+// release wipes a processed chunk and recycles its buffer.
+func (p *bufferPool) release(c *chunk) {
+	clear(c.data) // the last chunk of a decryption is not in the pooled buffer
+	p.put(c.buf)
+}
+
 // runPipeline reads chunks from src, runs process on up to workers of them at
 // once, and writes the results to w in their original order. At most a few
 // chunks per worker are in flight, so memory does not grow with the input.
@@ -71,6 +77,7 @@ func runPipeline(workers int, src chunkSource, pool *bufferPool, process func(*c
 			n, last, err := src.next(buf)
 			if err != nil {
 				readErr = err
+				pool.put(buf) // may hold part of the input
 				return
 			}
 
@@ -78,11 +85,14 @@ func runPipeline(workers int, src chunkSource, pool *bufferPool, process func(*c
 			select {
 			case jobs <- c:
 			case <-ctx.Done():
+				pool.put(buf)
 				return
 			}
 			select {
 			case ordered <- c:
 			case <-ctx.Done():
+				<-c.done // a worker has it
+				pool.release(c)
 				return
 			}
 
@@ -106,20 +116,20 @@ func runPipeline(workers int, src chunkSource, pool *bufferPool, process func(*c
 
 	var err error
 	for c := range ordered {
-		if err != nil {
-			continue // already failed, only drain so the reader can finish
+		<-c.done
+
+		// Once failed, chunks are only drained (and wiped) so the reader can finish.
+		if err == nil {
+			err = c.err
+			if err == nil {
+				_, err = w.Write(c.data)
+			}
+			if err != nil {
+				cancel()
+			}
 		}
 
-		<-c.done
-		err = c.err
-		if err == nil {
-			_, err = w.Write(c.data)
-		}
-		if err != nil {
-			cancel()
-		}
-		clear(c.data) // the last chunk of a decryption is not in the pooled buffer
-		pool.put(c.buf)
+		pool.release(c)
 	}
 	wg.Wait()
 

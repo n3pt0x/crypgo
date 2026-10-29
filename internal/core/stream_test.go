@@ -339,3 +339,62 @@ func BenchmarkSealStream(b *testing.B) {
 		}
 	}
 }
+
+// trackingSource fills every buffer with data and remembers all the buffers it was given.
+type trackingSource struct {
+	size   int
+	chunks int
+	failAt int // index of the chunk whose read fails after the buffer was filled, -1 for none
+	bufs   [][]byte
+}
+
+func (s *trackingSource) next(buf []byte) (int, bool, error) {
+	index := len(s.bufs)
+	s.bufs = append(s.bufs, buf)
+
+	for i := range buf[:s.size] {
+		buf[i] = 0xAA
+	}
+	if index == s.failAt {
+		return 0, false, errBoom
+	}
+
+	return s.size, index == s.chunks-1, nil
+}
+
+// Whatever the way the pipeline ends, no chunk buffer may keep data behind.
+func TestPipelineWipesBuffers(t *testing.T) {
+	const size = 256
+
+	tests := []struct {
+		name   string
+		failAt int // chunk whose read fails, -1 for none
+		writer func() io.Writer
+		want   error
+	}{
+		{"success", -1, func() io.Writer { return io.Discard }, nil},
+		{"write error", -1, func() io.Writer { return &failingWriter{left: 3} }, errBoom},
+		{"read error", 20, func() io.Writer { return io.Discard }, errBoom},
+	}
+
+	for _, tt := range tests {
+		for _, workers := range []int{1, 4} {
+			source := &trackingSource{size: size, chunks: 50, failAt: tt.failAt}
+			pool := newBufferPool(size, poolSize(workers))
+
+			err := withTimeout(t, func() error {
+				return runPipeline(workers, source, pool, func(c *chunk) error { return nil }, tt.writer())
+			})
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("%s (workers=%d): error = %v, want %v", tt.name, workers, err, tt.want)
+			}
+
+			for i, buf := range source.bufs {
+				if !bytes.Equal(buf, make([]byte, size)) {
+					t.Errorf("%s (workers=%d): buffer %d still holds data", tt.name, workers, i)
+					break
+				}
+			}
+		}
+	}
+}
