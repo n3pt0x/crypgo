@@ -37,7 +37,7 @@ const (
 	// Plaintext bytes per chunk. The maximum bounds the memory a header can make us allocate.
 	DefaultChunkSize = 256 << 10
 	MinChunkSize     = 1
-	MaxChunkSize     = 16 << 20
+	MaxChunkSize     = 4 << 20
 )
 
 type HeaderSymmetric struct {
