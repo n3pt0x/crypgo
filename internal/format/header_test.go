@@ -9,7 +9,7 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
+func newHeaderSymmetric(algo uint8) format.HeaderSymmetric {
 	kdfParams, _ := encryption.KDFProfileParams(encryption.KDFProfileArgon2idDefault)
 
 	h := format.HeaderSymmetric{
@@ -21,25 +21,25 @@ func newHeaderSymmetric(algo uint8, nonce []byte) format.HeaderSymmetric {
 		KDFMemory:      kdfParams.Memory,
 		KDFThreads:     kdfParams.Threads,
 		Salt:           [encryption.SaltSize]byte(encryption.GenerateSalt()),
+		ChunkSize:      format.DefaultChunkSize,
+		NoncePrefix:    [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix()),
 	}
-	copy(h.Nonce[:], nonce)
 
 	return h
 }
 
 func TestHeaderSymmetricWriteReadRoundTrip(t *testing.T) {
 	cases := []struct {
-		name  string
-		algo  uint8
-		nonce []byte
+		name string
+		algo uint8
 	}{
-		{"AESGCM", format.AlgoAESGCM, encryption.GenerateNonceAESGCM()},
-		{"XChaCha20Poly1305", format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305()},
+		{"AESGCM", format.AlgoAESGCM},
+		{"XChaCha20Poly1305", format.AlgoXChaCha20Poly1305},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			original := newHeaderSymmetric(c.algo, c.nonce)
+			original := newHeaderSymmetric(c.algo)
 
 			var buf bytes.Buffer
 			if _, err := original.WriteTo(&buf); err != nil {
@@ -64,7 +64,7 @@ func TestHeaderSymmetricWriteReadRoundTrip(t *testing.T) {
 
 func TestHeaderSymmetricReadFromTruncated(t *testing.T) {
 	var buf bytes.Buffer
-	header := newHeaderSymmetric(format.AlgoAESGCM, encryption.GenerateNonceAESGCM())
+	header := newHeaderSymmetric(format.AlgoAESGCM)
 	if _, err := header.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo has failed: %v", err)
 	}
@@ -94,16 +94,36 @@ func TestHeaderSymmetricIsValid(t *testing.T) {
 		{"time too high", func(h *format.HeaderSymmetric) { h.KDFTime = format.MaxKDFTime + 1 }, format.ErrInvalidKDF},
 		{"threads zero", func(h *format.HeaderSymmetric) { h.KDFThreads = 0 }, format.ErrInvalidKDF},
 		{"threads too high", func(h *format.HeaderSymmetric) { h.KDFThreads = format.MaxKDFThreads + 1 }, format.ErrInvalidKDF},
+		{"chunk size zero", func(h *format.HeaderSymmetric) { h.ChunkSize = 0 }, format.ErrInvalidChunk},
+		{"chunk size too high", func(h *format.HeaderSymmetric) { h.ChunkSize = format.MaxChunkSize + 1 }, format.ErrInvalidChunk},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := newHeaderSymmetric(format.AlgoXChaCha20Poly1305, encryption.GenerateNonceXChaCha20Poly1305())
+			h := newHeaderSymmetric(format.AlgoXChaCha20Poly1305)
 			tt.mutate(&h)
 
 			if err := h.IsValid(); !errors.Is(err, tt.want) {
 				t.Fatalf("IsValid() = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestHeaderSymmetricBytes(t *testing.T) {
+	h := newHeaderSymmetric(format.AlgoAESGCM)
+
+	var buf bytes.Buffer
+	if _, err := h.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo has failed: %v", err)
+	}
+	if !bytes.Equal(h.Bytes(), buf.Bytes()) {
+		t.Error("Bytes() differs from what WriteTo writes")
+	}
+
+	other := h
+	other.ChunkSize++
+	if bytes.Equal(h.Bytes(), other.Bytes()) {
+		t.Error("headers with different chunk sizes have the same bytes")
 	}
 }

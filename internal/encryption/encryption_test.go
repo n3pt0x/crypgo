@@ -2,6 +2,7 @@ package encryption_test
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"testing"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
@@ -13,15 +14,14 @@ var (
 	cheapParams   = encryption.Argon2Params{Memory: 64, Time: 1, Threads: 1}
 )
 
-func TestSaltAndNonce(t *testing.T) {
+func TestSaltAndNoncePrefix(t *testing.T) {
 	sizes := []struct {
 		name string
 		got  []byte
 		want int
 	}{
 		{"salt", encryption.GenerateSalt(), encryption.SaltSize},
-		{"aes-gcm nonce", encryption.GenerateNonceAESGCM(), encryption.NonceSizeAESGCM},
-		{"xchacha20 nonce", encryption.GenerateNonceXChaCha20Poly1305(), encryption.NonceSizeXChaCha20Poly1305},
+		{"nonce prefix", encryption.GenerateNoncePrefix(), encryption.NoncePrefixSize},
 	}
 
 	for _, s := range sizes {
@@ -75,25 +75,27 @@ func TestKDFProfileParams(t *testing.T) {
 
 func TestAEADRoundTrip(t *testing.T) {
 	ciphers := []struct {
-		name    string
-		nonce   func() []byte
-		encrypt func(plaintext, key, nonce []byte) ([]byte, error)
-		decrypt func(ciphertext, key, nonce []byte) ([]byte, error)
+		name string
+		new  func(key []byte) (cipher.AEAD, error)
 	}{
-		{"aes-gcm", encryption.GenerateNonceAESGCM, encryption.EncryptAESGCM, encryption.DecryptAESGCM},
-		{"xchacha20", encryption.GenerateNonceXChaCha20Poly1305, encryption.EncryptXChaCha20Poly1305, encryption.DecryptXChaCha20Poly1305},
+		{"aes-gcm", encryption.NewAESGCM},
+		{"xchacha20", encryption.NewXChaCha20Poly1305},
 	}
+
+	aad := []byte("header")
 
 	for _, c := range ciphers {
 		t.Run(c.name, func(t *testing.T) {
-			nonce := c.nonce()
-
-			ciphertext, err := c.encrypt(testPlaintext, testKey, nonce)
+			aead, err := c.new(testKey)
 			if err != nil {
-				t.Fatalf("encryption has failed: %v", err)
+				t.Fatalf("cipher creation has failed: %v", err)
 			}
+			nonce := make([]byte, aead.NonceSize())
+			encryption.ChunkNonce(nonce, encryption.GenerateNoncePrefix(), 0, true)
 
-			plaintext, err := c.decrypt(ciphertext, testKey, nonce)
+			ciphertext := aead.Seal(nil, nonce, testPlaintext, aad)
+
+			plaintext, err := aead.Open(nil, nonce, ciphertext, aad)
 			if err != nil {
 				t.Fatalf("decryption has failed: %v", err)
 			}
@@ -102,14 +104,48 @@ func TestAEADRoundTrip(t *testing.T) {
 			}
 
 			wrongKey := bytes.Repeat([]byte{0x43}, encryption.KeySize)
-			if _, err := c.decrypt(ciphertext, wrongKey, nonce); err == nil {
+			other, _ := c.new(wrongKey)
+			if _, err := other.Open(nil, nonce, ciphertext, aad); err == nil {
 				t.Error("decryption with a wrong key succeeded")
 			}
 
+			if _, err := aead.Open(nil, nonce, ciphertext, []byte("other header")); err == nil {
+				t.Error("decryption with a different AAD succeeded")
+			}
+
 			ciphertext[0] ^= 0xff
-			if _, err := c.decrypt(ciphertext, testKey, nonce); err == nil {
+			if _, err := aead.Open(nil, nonce, ciphertext, aad); err == nil {
 				t.Error("decryption of a tampered ciphertext succeeded")
 			}
 		})
+	}
+
+	if _, err := encryption.NewAESGCM([]byte("short")); err == nil {
+		t.Error("AES-GCM accepted a key of the wrong size")
+	}
+}
+
+func TestChunkNonce(t *testing.T) {
+	prefix := bytes.Repeat([]byte{0xAA}, encryption.NoncePrefixSize)
+
+	for _, size := range []int{encryption.NonceSizeAESGCM, encryption.NonceSizeXChaCha20Poly1305} {
+		nonce := make([]byte, size)
+		encryption.ChunkNonce(nonce, prefix, 0x0102, false)
+
+		counter := size - encryption.NonceCounterSize - encryption.NonceLastFlagSize
+		if !bytes.Equal(nonce[:counter], prefix[:counter]) {
+			t.Errorf("%d-byte nonce prefix = %x, want %x", size, nonce[:counter], prefix[:counter])
+		}
+		if want := []byte{0, 0, 0, 0, 0, 0, 1, 2}; !bytes.Equal(nonce[counter:size-1], want) {
+			t.Errorf("%d-byte nonce counter = %x, want %x", size, nonce[counter:size-1], want)
+		}
+		if nonce[size-1] != 0 {
+			t.Errorf("%d-byte nonce has the last flag set on a middle chunk", size)
+		}
+
+		encryption.ChunkNonce(nonce, prefix, 0x0102, true)
+		if nonce[size-1] != 1 {
+			t.Errorf("%d-byte nonce does not have the last flag set", size)
+		}
 	}
 }
