@@ -8,17 +8,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var verifyWorkers int
+
 var verifyCmd = &cobra.Command{
 	Use:   "verify [file]",
 	Short: "Try to decrypt file to check file header + passphrase",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		data, err := readInput(args)
-		if err != nil {
+		if err := checkWorkers(verifyWorkers); err != nil {
 			return err
 		}
 
-		if err := core.CheckSymmetric(data); err != nil {
+		in, err := openInput(args)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+
+		header, err := core.ReadHeader(in)
+		if err != nil {
 			return err
 		}
 
@@ -28,7 +36,7 @@ var verifyCmd = &cobra.Command{
 		}
 		defer password.ZeroBytes(passphrase)
 
-		if err := core.VerifySymmetric(data, passphrase); err != nil {
+		if err := core.VerifySymmetric(header, in, passphrase, verifyWorkers); err != nil {
 			return err
 		}
 
@@ -39,5 +47,6 @@ var verifyCmd = &cobra.Command{
 }
 
 func init() {
+	verifyCmd.Flags().IntVarP(&verifyWorkers, "workers", "w", defaultWorkers(), "chunks decrypted in parallel")
 	rootCmd.AddCommand(verifyCmd)
 }

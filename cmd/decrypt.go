@@ -14,6 +14,7 @@ var (
 	decryptOutput        string
 	decryptEraseOriginal bool
 	decryptForce         bool
+	decryptWorkers       int
 )
 
 var decryptCmd = &cobra.Command{
@@ -21,6 +22,10 @@ var decryptCmd = &cobra.Command{
 	Short: "Decrypt a file (or stdin) encrypted with crypgo",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkWorkers(decryptWorkers); err != nil {
+			return err
+		}
+
 		if decryptEraseOriginal {
 			if err := checkDelete(args, decryptOutput); err != nil {
 				return err
@@ -32,25 +37,18 @@ var decryptCmd = &cobra.Command{
 			defaultPath = strings.TrimSuffix(args[0], encryptedExt)
 		}
 
-		data, err := readInput(args)
+		in, err := openInput(args)
 		if err != nil {
 			return err
 		}
+		defer in.Close()
 
-		// Printing a decrypted message to the terminal is fine, but only
-		// when it comes from stdin (a file needs an output path).
 		dest, err := resolveOutput(decryptOutput, defaultPath, decryptForce, fromStdin(args))
 		if err != nil {
 			return err
 		}
 
-		plaintext, err := decrypt(data)
-		if err != nil {
-			return err
-		}
-		defer password.ZeroBytes(plaintext)
-
-		if err := dest.write(plaintext); err != nil {
+		if err := decrypt(in, dest, decryptWorkers); err != nil {
 			return err
 		}
 
@@ -59,6 +57,8 @@ var decryptCmd = &cobra.Command{
 		}
 
 		if decryptEraseOriginal {
+			in.Close() // an open file cannot be removed on Windows
+
 			if err := os.Remove(args[0]); err != nil {
 				return err
 			}
@@ -74,20 +74,31 @@ func init() {
 	decryptCmd.Flags().StringVarP(&decryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file> without .crypgo, or stdout when reading stdin)")
 	decryptCmd.Flags().BoolVarP(&decryptEraseOriginal, "delete", "d", false, "removes the original file, does not securely erase it (required --output flag)")
 	decryptCmd.Flags().BoolVarP(&decryptForce, "force", "f", false, "overwrite the output file if it exists")
+	decryptCmd.Flags().IntVarP(&decryptWorkers, "workers", "w", defaultWorkers(), "chunks decrypted in parallel")
 	rootCmd.AddCommand(decryptCmd)
 }
 
-// decrypt asks for the passphrase and returns the decrypted data.
-func decrypt(data []byte) ([]byte, error) {
-	if err := core.CheckSymmetric(data); err != nil {
-		return nil, err
+func decrypt(in *input, dest destination, workers int) error {
+	header, err := core.ReadHeader(in)
+	if err != nil {
+		return err
 	}
 
 	passphrase, err := readPassphrase(false)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer password.ZeroBytes(passphrase)
 
-	return core.DecryptSymmetric(data, passphrase)
+	out, err := dest.create()
+	if err != nil {
+		return err
+	}
+
+	if err := core.DecryptSymmetric(header, in, out, passphrase, workers); err != nil {
+		out.Abort()
+		return err
+	}
+
+	return out.Commit()
 }

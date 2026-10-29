@@ -61,7 +61,7 @@ func runPipeline(workers int, src chunkSource, pool *bufferPool, process func(*c
 	jobs := make(chan *chunk, workers)
 	ordered := make(chan *chunk, 2*workers)
 
-	var readErr error // set by the reader, read once ordered is closed
+	var readErr error
 	go func() {
 		defer close(ordered)
 		defer close(jobs)

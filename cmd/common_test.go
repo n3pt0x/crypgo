@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func TestResolveOutputFileDestination(t *testing.T) {
 	}
 }
 
-func TestReadInputFile(t *testing.T) {
+func TestOpenInputFile(t *testing.T) {
 	dir := t.TempDir()
 	filled := filepath.Join(dir, "filled")
 	empty := filepath.Join(dir, "empty")
@@ -110,10 +111,59 @@ func TestReadInputFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := readInput([]string{tt.path})
-			if !errors.Is(err, tt.err) || !bytes.Equal(data, tt.want) {
-				t.Fatalf("readInput = %q, %v; want %q, %v", data, err, tt.want, tt.err)
+			in, err := openInput([]string{tt.path})
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("openInput error = %v, want %v", err, tt.err)
+			}
+			if err != nil {
+				return
+			}
+			defer in.Close()
+
+			data, err := io.ReadAll(in)
+			if err != nil || !bytes.Equal(data, tt.want) {
+				t.Fatalf("content = %q, %v; want %q, nil", data, err, tt.want)
 			}
 		})
+	}
+}
+
+func TestCheckWorkers(t *testing.T) {
+	for workers, want := range map[int]error{-1: ErrInvalidWorkers, 0: ErrInvalidWorkers, 1: nil, 64: nil, maxWorkers: nil, maxWorkers + 1: ErrInvalidWorkers} {
+		if err := checkWorkers(workers); !errors.Is(err, want) {
+			t.Errorf("checkWorkers(%d) = %v, want %v", workers, err, want)
+		}
+	}
+}
+
+func TestDestinationFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out")
+	dest := destination{path: path}
+
+	out, err := dest.create()
+	if err != nil {
+		t.Fatalf("create has failed: %v", err)
+	}
+	if _, err := out.Write([]byte("content")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("output exists before Commit: %v", err)
+	}
+	if err := out.Commit(); err != nil {
+		t.Fatalf("Commit has failed: %v", err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "content" {
+		t.Fatalf("output = %q, %v; want %q", got, err, "content")
+	}
+
+	out, err = dest.create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Write([]byte("discarded"))
+	out.Abort()
+	if got, _ := os.ReadFile(path); string(got) != "content" {
+		t.Fatalf("output = %q after Abort, want it untouched", got)
 	}
 }

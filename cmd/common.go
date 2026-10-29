@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 )
 
 const encryptedExt = ".crypgo"
+const maxWorkers = 256
 
 var (
 	ErrUnknownAlgo  = errors.New("unknown algorithm (expected: aes-gcm, xchacha20)")
@@ -28,6 +30,8 @@ var (
 	ErrOutputExists = errors.New("output file already exists, use --force to overwrite it")
 	ErrOutputIsDir  = errors.New("output path is a directory")
 	ErrEmptyInput   = errors.New("input is empty")
+
+	ErrInvalidWorkers = errors.New(fmt.Sprintf("--workers must be between 1 and %d", maxWorkers))
 
 	ErrDeleteNeedsOutput = errors.New("--delete needs an input file and --output <file>")
 	ErrDeleteSameFile    = errors.New("--delete: output and input are the same file")
@@ -179,32 +183,59 @@ func checkDelete(args []string, output string) error {
 	return nil
 }
 
-// readInput reads the file given as argument, or stdin when there is none.
-func readInput(args []string) ([]byte, error) {
+// input is the data to process, read as a stream: a file, or stdin.
+type input struct {
+	*bufio.Reader
+	file *os.File // nil for stdin
+}
+
+func (in *input) Close() error {
+	if in.file == nil {
+		return nil
+	}
+	return in.file.Close()
+}
+
+// openInput opens the file given as argument, or stdin when there is none.
+func openInput(args []string) (*input, error) {
+	in := &input{}
+	var r io.Reader = os.Stdin
+
 	if !fromStdin(args) {
-		data, err := fileio.ReadFile(args[0])
+		f, err := fileio.OpenFile(args[0])
 		if err != nil {
 			return nil, err
 		}
-		if len(data) == 0 {
-			return nil, ErrEmptyInput
-		}
-		return data, nil
-	}
-
-	if isTerminal(os.Stdin) {
+		in.file = f
+		r = f
+	} else if isTerminal(os.Stdin) {
 		return nil, ErrNoInput
 	}
 
-	data, err := io.ReadAll(os.Stdin)
-	if err != nil {
+	in.Reader = bufio.NewReader(r)
+
+	if _, err := in.Peek(1); err != nil {
+		in.Close()
+		if errors.Is(err, io.EOF) {
+			return nil, ErrEmptyInput
+		}
 		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, ErrEmptyInput
-	}
 
-	return data, nil
+	return in, nil
+}
+
+// defaultWorkers is one worker per CPU the process may use (GOMAXPROCS honours
+// cgroup CPU limits and the GOMAXPROCS variable, unlike runtime.NumCPU).
+func defaultWorkers() int {
+	return min(runtime.GOMAXPROCS(0), maxWorkers)
+}
+
+func checkWorkers(workers int) error {
+	if workers < 1 || workers > maxWorkers {
+		return ErrInvalidWorkers
+	}
+	return nil
 }
 
 // destination is where the result is written: a file, or stdout when path is empty.
@@ -238,10 +269,33 @@ func resolveOutput(out string, defaultPath string, force bool, terminalOK bool) 
 	return destination{path: path}, nil
 }
 
-func (d destination) write(data []byte) error {
+// output is an open destination. A file only appears at its path on Commit.
+type output struct {
+	io.Writer
+	file *fileio.AtomicWriter // nil for stdout
+}
+
+func (d destination) create() (*output, error) {
 	if d.path == "" {
-		_, err := os.Stdout.Write(data)
-		return err
+		return &output{Writer: os.Stdout}, nil
 	}
-	return fileio.AtomicWriteFile(d.path, data)
+
+	f, err := fileio.NewAtomicWriter(d.path)
+	if err != nil {
+		return nil, err
+	}
+	return &output{Writer: f, file: f}, nil
+}
+
+func (o *output) Commit() error {
+	if o.file == nil {
+		return nil
+	}
+	return o.file.Commit()
+}
+
+func (o *output) Abort() {
+	if o.file != nil {
+		o.file.Abort()
+	}
 }

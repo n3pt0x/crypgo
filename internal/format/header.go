@@ -113,7 +113,7 @@ func (h HeaderSymmetric) WriteTo(w io.Writer) (int64, error) {
 // so any change to the header makes decryption fail.
 func (h HeaderSymmetric) Bytes() []byte {
 	var buf bytes.Buffer
-	h.WriteTo(&buf) // a fixed-size struct written to a buffer cannot fail
+	h.WriteTo(&buf)
 	return buf.Bytes()
 }
 

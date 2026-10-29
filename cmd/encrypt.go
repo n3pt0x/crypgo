@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -16,6 +17,7 @@ var (
 	encryptParanoid      bool
 	encryptEraseOriginal bool
 	encryptForce         bool
+	encryptWorkers       int
 )
 
 var encryptCmd = &cobra.Command{
@@ -25,6 +27,10 @@ var encryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		algo, err := parseAlgo(encryptAlgo)
 		if err != nil {
+			return err
+		}
+
+		if err := checkWorkers(encryptWorkers); err != nil {
 			return err
 		}
 
@@ -39,11 +45,11 @@ var encryptCmd = &cobra.Command{
 			defaultPath = args[0] + encryptedExt
 		}
 
-		data, err := readInput(args)
+		in, err := openInput(args)
 		if err != nil {
 			return err
 		}
-		defer password.ZeroBytes(data)
+		defer in.Close()
 
 		dest, err := resolveOutput(encryptOutput, defaultPath, encryptForce, false)
 		if err != nil {
@@ -55,12 +61,7 @@ var encryptCmd = &cobra.Command{
 			kdfProfile = encryption.KDFProfileArgon2idParanoid
 		}
 
-		ciphertext, err := encrypt(data, algo, kdfProfile)
-		if err != nil {
-			return err
-		}
-
-		if err := dest.write(ciphertext); err != nil {
+		if err := encrypt(in, dest, algo, kdfProfile, encryptWorkers); err != nil {
 			return err
 		}
 
@@ -69,6 +70,8 @@ var encryptCmd = &cobra.Command{
 		}
 
 		if encryptEraseOriginal {
+			in.Close() // an open file cannot be removed on Windows
+
 			if err := os.Remove(args[0]); err != nil {
 				return err
 			}
@@ -86,16 +89,26 @@ func init() {
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
 	encryptCmd.Flags().BoolVarP(&encryptEraseOriginal, "delete", "d", false, "removes the original file, does not securely erase it (required --output flag)")
 	encryptCmd.Flags().BoolVarP(&encryptForce, "force", "f", false, "overwrite the output file if it exists")
+	encryptCmd.Flags().IntVarP(&encryptWorkers, "workers", "w", defaultWorkers(), "chunks encrypted in parallel")
 	rootCmd.AddCommand(encryptCmd)
 }
 
-// encrypt asks for a new passphrase and returns the encrypted data.
-func encrypt(data []byte, algo uint8, profile uint8) ([]byte, error) {
+func encrypt(in io.Reader, dest destination, algo uint8, profile uint8, workers int) error {
 	passphrase, err := readPassphrase(true)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer password.ZeroBytes(passphrase)
 
-	return core.EncryptSymmetric(data, passphrase, algo, profile)
+	out, err := dest.create()
+	if err != nil {
+		return err
+	}
+
+	if err := core.EncryptSymmetric(in, out, passphrase, algo, profile, core.Options{Workers: workers}); err != nil {
+		out.Abort()
+		return err
+	}
+
+	return out.Commit()
 }
