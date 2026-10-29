@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -10,8 +11,9 @@ import (
 )
 
 var (
-	decryptOutput string
-	decryptForce  bool
+	decryptOutput        string
+	decryptEraseOriginal bool
+	decryptForce         bool
 )
 
 var decryptCmd = &cobra.Command{
@@ -19,6 +21,12 @@ var decryptCmd = &cobra.Command{
 	Short: "Decrypt a file (or stdin) encrypted with crypgo",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if decryptEraseOriginal {
+			if err := checkDelete(args, decryptOutput); err != nil {
+				return err
+			}
+		}
+
 		defaultPath := ""
 		if !fromStdin(args) && strings.HasSuffix(args[0], encryptedExt) {
 			defaultPath = strings.TrimSuffix(args[0], encryptedExt)
@@ -50,12 +58,21 @@ var decryptCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dest.path)
 		}
 
+		if decryptEraseOriginal {
+			if err := os.Remove(args[0]); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Original file : %s, has been removed\n", args[0])
+		}
+
 		return nil
 	},
 }
 
 func init() {
 	decryptCmd.Flags().StringVarP(&decryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file> without .crypgo, or stdout when reading stdin)")
+	decryptCmd.Flags().BoolVarP(&decryptEraseOriginal, "delete", "d", false, "removes the original file, does not securely erase it (required --output flag)")
 	decryptCmd.Flags().BoolVarP(&decryptForce, "force", "f", false, "overwrite the output file if it exists")
 	rootCmd.AddCommand(decryptCmd)
 }

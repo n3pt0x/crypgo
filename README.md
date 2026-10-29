@@ -52,6 +52,7 @@ Encrypted data is never printed to a terminal: use `-o <file>` or redirect stdou
 - The passphrase is read from the terminal even when data is piped (`/dev/tty`, or the console on Windows).
 - Ctrl-C and SIGTERM are held back while the output file is being written. A `SIGKILL` or a power loss at that moment can leave a `.crypgo-*.tmp` file next to the output.
 - Windows builds are provided but still experimental. Use cmd, PowerShell or Windows Terminal. Git Bash (mintty) and binary pipes in PowerShell 5.1 are not supported.
+- The flag `--delete` removes the original file but does not securely erase it (required `--output` flag)
 
 ## File format
 

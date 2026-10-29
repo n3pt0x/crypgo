@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/n3pt0x/crypgo/internal/core"
 	"github.com/n3pt0x/crypgo/internal/encryption"
@@ -10,10 +11,11 @@ import (
 )
 
 var (
-	encryptOutput   string
-	encryptAlgo     string
-	encryptParanoid bool
-	encryptForce    bool
+	encryptOutput        string
+	encryptAlgo          string
+	encryptParanoid      bool
+	encryptEraseOriginal bool
+	encryptForce         bool
 )
 
 var encryptCmd = &cobra.Command{
@@ -24,6 +26,12 @@ var encryptCmd = &cobra.Command{
 		algo, err := parseAlgo(encryptAlgo)
 		if err != nil {
 			return err
+		}
+
+		if encryptEraseOriginal {
+			if err := checkDelete(args, encryptOutput); err != nil {
+				return err
+			}
 		}
 
 		defaultPath := ""
@@ -60,6 +68,14 @@ var encryptCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dest.path)
 		}
 
+		if encryptEraseOriginal {
+			if err := os.Remove(args[0]); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Original file : %s, has been removed\n", args[0])
+		}
+
 		return nil
 	},
 }
@@ -68,6 +84,7 @@ func init() {
 	encryptCmd.Flags().StringVarP(&encryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file>.crypgo, or stdout when reading stdin)")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
+	encryptCmd.Flags().BoolVarP(&encryptEraseOriginal, "delete", "d", false, "removes the original file, does not securely erase it (required --output flag)")
 	encryptCmd.Flags().BoolVarP(&encryptForce, "force", "f", false, "overwrite the output file if it exists")
 	rootCmd.AddCommand(encryptCmd)
 }

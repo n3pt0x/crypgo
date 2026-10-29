@@ -28,6 +28,9 @@ var (
 	ErrOutputExists = errors.New("output file already exists, use --force to overwrite it")
 	ErrOutputIsDir  = errors.New("output path is a directory")
 	ErrEmptyInput   = errors.New("input is empty")
+
+	ErrDeleteNeedsOutput = errors.New("--delete needs an input file and --output <file>")
+	ErrDeleteSameFile    = errors.New("--delete: output and input are the same file")
 )
 
 func isTerminal(f *os.File) bool {
@@ -157,6 +160,23 @@ func checkOutput(path string, force bool) error {
 // fromStdin reports whether the input is stdin (no file argument, or "-").
 func fromStdin(args []string) bool {
 	return len(args) == 0 || args[0] == "-"
+}
+
+func checkDelete(args []string, output string) error {
+	if fromStdin(args) || output == "" || output == "-" {
+		return ErrDeleteNeedsOutput
+	}
+
+	in, err := os.Stat(args[0])
+	if err != nil {
+		return nil
+	}
+	out, err := os.Stat(output)
+	if err == nil && os.SameFile(in, out) {
+		return ErrDeleteSameFile
+	}
+
+	return nil
 }
 
 // readInput reads the file given as argument, or stdin when there is none.
