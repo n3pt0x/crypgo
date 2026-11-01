@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/n3pt0x/crypgo/internal/core"
 	"github.com/n3pt0x/crypgo/internal/encryption"
@@ -12,12 +11,9 @@ import (
 )
 
 var (
-	encryptOutput        string
-	encryptAlgo          string
-	encryptParanoid      bool
-	encryptEraseOriginal bool
-	encryptForce         bool
-	encryptWorkers       int
+	encryptOpts     ioOptions
+	encryptAlgo     string
+	encryptParanoid bool
 )
 
 var encryptCmd = &cobra.Command{
@@ -30,19 +26,21 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		if err := checkWorkers(encryptWorkers); err != nil {
+		profile := uint8(encryption.KDFProfileArgon2idDefault)
+		if encryptParanoid {
+			profile = encryption.KDFProfileArgon2idParanoid
+		}
+
+		opts := encryptOpts
+
+		if err := checkWorkers(opts.workers); err != nil {
 			return err
 		}
 
-		if encryptEraseOriginal {
-			if err := checkDelete(args, encryptOutput); err != nil {
+		if opts.erase {
+			if err := checkDelete(args, opts.output); err != nil {
 				return err
 			}
-		}
-
-		defaultPath := ""
-		if !fromStdin(args) {
-			defaultPath = args[0] + encryptedExt
 		}
 
 		in, err := openInput(args)
@@ -51,17 +49,12 @@ var encryptCmd = &cobra.Command{
 		}
 		defer in.Close()
 
-		dest, err := resolveOutput(encryptOutput, defaultPath, encryptForce, false)
+		dest, err := resolveOutput(opts.output, encryptDefaultPath(args), opts.force, false)
 		if err != nil {
 			return err
 		}
 
-		kdfProfile := uint8(encryption.KDFProfileArgon2idDefault)
-		if encryptParanoid {
-			kdfProfile = encryption.KDFProfileArgon2idParanoid
-		}
-
-		if err := encrypt(in, dest, algo, kdfProfile, encryptWorkers); err != nil {
+		if err := encrypt(in, dest, algo, profile, opts.workers); err != nil {
 			return err
 		}
 
@@ -69,14 +62,9 @@ var encryptCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dest.path)
 		}
 
-		if encryptEraseOriginal {
+		if opts.erase {
 			in.Close() // an open file cannot be removed on Windows
-
-			if err := os.Remove(args[0]); err != nil {
-				return err
-			}
-
-			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Original file : %s, has been removed\n", args[0])
+			return removeOriginal(cmd, args[0])
 		}
 
 		return nil
@@ -84,13 +72,19 @@ var encryptCmd = &cobra.Command{
 }
 
 func init() {
-	encryptCmd.Flags().StringVarP(&encryptOutput, "output", "o", "", "output file, \"-\" for stdout (default: <file>.crypgo, or stdout when reading stdin)")
+	encryptOpts.bind(encryptCmd,
+		"output file, \"-\" for stdout (default: <file>.crypgo, or stdout when reading stdin)",
+		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
-	encryptCmd.Flags().BoolVarP(&encryptEraseOriginal, "delete", "d", false, "removes the original file, does not securely erase it (required --output flag)")
-	encryptCmd.Flags().BoolVarP(&encryptForce, "force", "f", false, "overwrite the output file if it exists")
-	encryptCmd.Flags().IntVarP(&encryptWorkers, "workers", "w", defaultWorkers(), "chunks encrypted in parallel")
 	rootCmd.AddCommand(encryptCmd)
+}
+
+func encryptDefaultPath(args []string) string {
+	if fromStdin(args) {
+		return ""
+	}
+	return args[0] + encryptedExt
 }
 
 func encrypt(in io.Reader, dest destination, algo uint8, profile uint8, workers int) error {
