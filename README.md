@@ -40,6 +40,10 @@ crypgo encrypt --workers 2 big.iso
 # Decrypt -> notes.txt (refuses to overwrite an existing file without -f)
 crypgo decrypt notes.txt.crypgo
 
+# Several files at once (one passphrase), with a custom extension instead of .crypgo
+crypgo encrypt -e .enc a.txt b.txt      # -> a.txt.enc b.txt.enc
+crypgo decrypt -e .enc a.txt.enc b.txt.enc
+
 # Check the file and the passphrase without writing anything
 crypgo verify notes.txt.crypgo
 

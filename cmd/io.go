@@ -101,6 +101,29 @@ type destination struct {
 	path string
 }
 
+func resolveOutputs(out string, defaultPaths []string, force bool, terminalOK bool) ([]destination, error) {
+	dests := make([]destination, 0, len(defaultPaths))
+	seen := make(map[string]struct{}, len(defaultPaths))
+
+	for _, defaultPath := range defaultPaths {
+		dest, err := resolveOutput(out, defaultPath, force, terminalOK)
+		if err != nil {
+			return nil, err
+		}
+
+		if dest.path != "" {
+			if _, dup := seen[dest.path]; dup {
+				return nil, fmt.Errorf("%s: %w", dest.path, ErrOutputDuplicate)
+			}
+			seen[dest.path] = struct{}{}
+		}
+
+		dests = append(dests, dest)
+	}
+
+	return dests, nil
+}
+
 func resolveOutput(out string, defaultPath string, force bool, terminalOK bool) (destination, error) {
 	toTerminal := isTerminal(os.Stdout)
 

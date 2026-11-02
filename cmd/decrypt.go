@@ -22,11 +22,11 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
-		if err := checkOutputCount(args, opts.output); err != nil {
+		if err := checkOutputCount(args, opts.output, opts.extension); err != nil {
 			return err
 		}
 
-		allPath := decryptDefaultPath(args)
+		allPath := decryptDefaultPath(args, opts.extension)
 
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
@@ -40,6 +40,11 @@ var decryptCmd = &cobra.Command{
 		}
 		defer closeInputs(ins)
 
+		dests, err := resolveOutputs(opts.output, allPath, opts.force, fromStdin(args))
+		if err != nil {
+			return err
+		}
+
 		passphrase, err := readPassphrase(false)
 		if err != nil {
 			return err
@@ -47,17 +52,12 @@ var decryptCmd = &cobra.Command{
 		defer password.ZeroBytes(passphrase)
 
 		for key, in := range ins {
-			dest, err := resolveOutput(opts.output, allPath[key], opts.force, fromStdin(args))
-			if err != nil {
+			if err := decrypt(in, passphrase, dests[key], opts.workers); err != nil {
 				return err
 			}
 
-			if err := decrypt(in, passphrase, dest, opts.workers); err != nil {
-				return err
-			}
-
-			if dest.path != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dest.path)
+			if dests[key].path != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dests[key].path)
 			}
 
 			if opts.erase {
@@ -79,16 +79,16 @@ func init() {
 	rootCmd.AddCommand(decryptCmd)
 }
 
-func decryptDefaultPath(args []string) []string {
+func decryptDefaultPath(args []string, extension string) []string {
 	if fromStdin(args) {
 		return []string{""}
 	}
 
-	out := make([]string, 0, len(args))
+	ext := outputExt(extension)
 
+	out := make([]string, 0, len(args))
 	for _, arg := range args {
-		format := strings.TrimSuffix(arg, encryptedExt)
-		out = append(out, format)
+		out = append(out, strings.TrimSuffix(arg, ext))
 	}
 
 	return out

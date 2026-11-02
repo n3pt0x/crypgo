@@ -14,7 +14,6 @@ var (
 	encryptOpts     ioOptions
 	encryptAlgo     string
 	encryptParanoid bool
-	encryptExt      string
 )
 
 var encryptCmd = &cobra.Command{
@@ -38,11 +37,11 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		if err := checkOutputCount(args, opts.output); err != nil {
+		if err := checkOutputCount(args, opts.output, opts.extension); err != nil {
 			return err
 		}
 
-		allPath := encryptDefaultPath(args)
+		allPath := encryptDefaultPath(args, opts.extension)
 
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
@@ -56,6 +55,11 @@ var encryptCmd = &cobra.Command{
 		}
 		defer closeInputs(ins)
 
+		dests, err := resolveOutputs(opts.output, allPath, opts.force, false)
+		if err != nil {
+			return err
+		}
+
 		passphrase, err := readPassphrase(true)
 		if err != nil {
 			return err
@@ -63,17 +67,12 @@ var encryptCmd = &cobra.Command{
 		defer password.ZeroBytes(passphrase)
 
 		for key, in := range ins {
-			dest, err := resolveOutput(opts.output, allPath[key], opts.force, false)
-			if err != nil {
+			if err := encrypt(in, dests[key], passphrase, algo, profile, opts.workers); err != nil {
 				return err
 			}
 
-			if err := encrypt(in, dest, passphrase, algo, profile, opts.workers); err != nil {
-				return err
-			}
-
-			if dest.path != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dest.path)
+			if dests[key].path != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dests[key].path)
 			}
 
 			if opts.erase {
@@ -94,21 +93,15 @@ func init() {
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
-	encryptCmd.Flags().StringVarP(&encryptExt, "extension", "e", "", "give an extension for all output, when mutliples files are gived in command")
 	rootCmd.AddCommand(encryptCmd)
 }
 
-func encryptDefaultPath(args []string) []string {
+func encryptDefaultPath(args []string, extension string) []string {
 	if fromStdin(args) {
 		return []string{""}
 	}
 
-	var ext string
-	if len(encryptExt) > 0 {
-		ext = encryptExt
-	} else {
-		ext = encryptedExt
-	}
+	ext := outputExt(extension)
 
 	out := make([]string, 0, len(args))
 	for _, arg := range args {
