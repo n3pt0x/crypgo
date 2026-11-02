@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/core"
+	"github.com/n3pt0x/crypgo/internal/format"
 	"github.com/n3pt0x/crypgo/internal/password"
 	"github.com/spf13/cobra"
 )
@@ -34,17 +36,34 @@ var decryptCmd = &cobra.Command{
 			}
 		}
 
+		// inputs
 		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
 
+		// outputs
 		dests, err := resolveOutputs(opts.output, allPath, opts.force, fromStdin(args))
 		if err != nil {
 			return err
 		}
 
+		// headers
+		var headers = make([]format.HeaderSymmetric, 0, len(dests))
+		for _, in := range ins {
+			header, err := core.ReadHeader(in)
+			if err != nil {
+				if errors.Is(err, format.ErrInvalidMagic) {
+					// err + filename
+					return fmt.Errorf("%v: %s", err, in.file.Name())
+				}
+				return err
+			}
+			headers = append(headers, header)
+		}
+
+		// passphrase
 		passphrase, err := readPassphrase(false)
 		if err != nil {
 			return err
@@ -52,7 +71,7 @@ var decryptCmd = &cobra.Command{
 		defer password.ZeroBytes(passphrase)
 
 		for key, in := range ins {
-			if err := decrypt(in, passphrase, dests[key], opts.workers); err != nil {
+			if err := decrypt(in, passphrase, headers[key], dests[key], opts.workers); err != nil {
 				return err
 			}
 
@@ -94,12 +113,7 @@ func decryptDefaultPath(args []string, extension string) []string {
 	return out
 }
 
-func decrypt(in *input, passphrase []byte, dest destination, workers int) error {
-	header, err := core.ReadHeader(in)
-	if err != nil {
-		return err
-	}
-
+func decrypt(in *input, passphrase []byte, header format.HeaderSymmetric, dest destination, workers int) error {
 	out, err := dest.create()
 	if err != nil {
 		return err

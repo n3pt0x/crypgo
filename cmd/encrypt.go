@@ -49,17 +49,20 @@ var encryptCmd = &cobra.Command{
 			}
 		}
 
+		// inputs
 		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
 
+		// outputs
 		dests, err := resolveOutputs(opts.output, allPath, opts.force, false)
 		if err != nil {
 			return err
 		}
 
+		// passphrase
 		passphrase, err := readPassphrase(true)
 		if err != nil {
 			return err

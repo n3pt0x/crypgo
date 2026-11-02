@@ -16,7 +16,7 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "crypgo",
-	Short: "CLI to encrypt / decrypt file and message",
+	Short: "CLI to encrypt / decrypt file",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if rootVersion {
 			fmt.Printf("%s\n", Version)
