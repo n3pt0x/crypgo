@@ -17,8 +17,8 @@ const (
 
 const (
 	// Symmetric
-	AlgoAESGCM            = 0x01
-	AlgoXChaCha20Poly1305 = 0x02
+	AlgoXChaCha20Poly1305 = 0x01
+	AlgoAESGCM            = 0x02
 )
 
 const (

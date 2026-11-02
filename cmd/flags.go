@@ -65,17 +65,23 @@ func checkOutputCount(args []string, output, extension string) error {
 // checkDelete: with several inputs, --output is refused, so each one is deleted
 // once its own default output is written.
 func checkDelete(args []string, output string) error {
-	if fromStdin(args) || output == "-" || (output == "" && len(args) == 1) {
+	if fromStdin(args) {
+		return ErrDeleteRestricted
+	}
+
+	// -o specified without value
+	if output == "-" {
 		return ErrDeleteNeedsOutput
 	}
 
+	// default output : file + ext
 	if output == "" {
 		return nil
 	}
 
 	out, err := os.Stat(output)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	for _, arg := range args {
