@@ -46,6 +46,10 @@ crypgo verify notes.txt.crypgo
 # Messages through stdin / stdout
 echo "Hello World" | crypgo encrypt > msg.crypgo
 crypgo decrypt < msg.crypgo
+
+# Tar archive
+tar czf - folder/ | crypgo encrypt -o folder.tar.gz
+crypgo decrypt folder.tar.gz | tar xzf
 ```
 
 Encrypted data is never printed to a terminal: use `-o <file>` or redirect stdout. `-o -` writes to stdout instead of the default file. `crypgo --version` and `crypgo <command> --help` show the rest.

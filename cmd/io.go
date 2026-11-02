@@ -27,9 +27,9 @@ func checkOutput(path string, force bool) error {
 	return err
 }
 
-// fromStdin reports whether the input is stdin (no file argument, or "-").
+// fromStdin reports whether the input is stdin (no file argument, or a lone "-").
 func fromStdin(args []string) bool {
-	return len(args) == 0 || args[0] == "-"
+	return len(args) == 0 || (len(args) == 1 && args[0] == "-")
 }
 
 // input is the data to process, read as a stream: a file, or stdin.
@@ -45,33 +45,55 @@ func (in *input) Close() error {
 	return in.file.Close()
 }
 
-// openInput opens the file given as argument, or stdin when there is none.
-func openInput(args []string) (*input, error) {
-	in := &input{}
-	var r io.Reader = os.Stdin
+// openInput opens the files given as arguments, or stdin when there are none.
+func openInput(args []string) ([]*input, error) {
+	if fromStdin(args) {
+		if isTerminal(os.Stdin) {
+			return nil, ErrNoInput
+		}
 
-	if !fromStdin(args) {
-		f, err := fileio.OpenFile(args[0])
-		if err != nil {
+		in := &input{Reader: bufio.NewReader(os.Stdin)}
+		if err := in.peek(); err != nil {
 			return nil, err
 		}
-		in.file = f
-		r = f
-	} else if isTerminal(os.Stdin) {
-		return nil, ErrNoInput
+		return []*input{in}, nil
 	}
 
-	in.Reader = bufio.NewReader(r)
-
-	if _, err := in.Peek(1); err != nil {
-		in.Close()
-		if errors.Is(err, io.EOF) {
-			return nil, ErrEmptyInput
+	ins := make([]*input, 0, len(args))
+	for _, arg := range args {
+		f, err := fileio.OpenFile(arg)
+		if err != nil {
+			closeInputs(ins)
+			return nil, err
 		}
-		return nil, err
+
+		in := &input{Reader: bufio.NewReader(f), file: f}
+		ins = append(ins, in)
+
+		if err := in.peek(); err != nil {
+			closeInputs(ins)
+			return nil, fmt.Errorf("%s: %w", arg, err)
+		}
 	}
 
-	return in, nil
+	return ins, nil
+}
+
+// peek makes sure the input is not empty.
+func (in *input) peek() error {
+	if _, err := in.Peek(1); err != nil {
+		if errors.Is(err, io.EOF) {
+			return ErrEmptyInput
+		}
+		return err
+	}
+	return nil
+}
+
+func closeInputs(ins []*input) {
+	for _, in := range ins {
+		in.Close()
+	}
 }
 
 // destination is where the result is written: a file, or stdout when path is empty.

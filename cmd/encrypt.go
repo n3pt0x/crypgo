@@ -17,9 +17,9 @@ var (
 )
 
 var encryptCmd = &cobra.Command{
-	Use:   "encrypt [file]",
-	Short: "Encrypt a file (or stdin) with a passphrase",
-	Args:  cobra.MaximumNArgs(1),
+	Use:   "encrypt [file...]",
+	Short: "Encrypt files (or stdin) with a passphrase",
+	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		algo, err := parseAlgo(encryptAlgo)
 		if err != nil {
@@ -37,34 +37,50 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
+		if err := checkOutputCount(args, opts.output); err != nil {
+			return err
+		}
+
+		allPath := encryptDefaultPath(args)
+
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
 				return err
 			}
 		}
 
-		in, err := openInput(args)
+		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
-		defer in.Close()
+		defer closeInputs(ins)
 
-		dest, err := resolveOutput(opts.output, encryptDefaultPath(args), opts.force, false)
+		passphrase, err := readPassphrase(true)
 		if err != nil {
 			return err
 		}
+		defer password.ZeroBytes(passphrase)
 
-		if err := encrypt(in, dest, algo, profile, opts.workers); err != nil {
-			return err
-		}
+		for key, in := range ins {
+			dest, err := resolveOutput(opts.output, allPath[key], opts.force, false)
+			if err != nil {
+				return err
+			}
 
-		if dest.path != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dest.path)
-		}
+			if err := encrypt(in, dest, passphrase, algo, profile, opts.workers); err != nil {
+				return err
+			}
 
-		if opts.erase {
-			in.Close() // an open file cannot be removed on Windows
-			return removeOriginal(cmd, args[0])
+			if dest.path != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dest.path)
+			}
+
+			if opts.erase {
+				in.Close() // an open file cannot be removed on Windows
+				if err := removeOriginal(cmd, in.file.Name()); err != nil {
+					return err
+				}
+			}
 		}
 
 		return nil
@@ -80,20 +96,21 @@ func init() {
 	rootCmd.AddCommand(encryptCmd)
 }
 
-func encryptDefaultPath(args []string) string {
+func encryptDefaultPath(args []string) []string {
 	if fromStdin(args) {
-		return ""
+		return []string{""}
 	}
-	return args[0] + encryptedExt
+
+	out := make([]string, 0, len(args))
+
+	for _, arg := range args {
+		out = append(out, arg+encryptedExt)
+	}
+
+	return out
 }
 
-func encrypt(in io.Reader, dest destination, algo uint8, profile uint8, workers int) error {
-	passphrase, err := readPassphrase(true)
-	if err != nil {
-		return err
-	}
-	defer password.ZeroBytes(passphrase)
-
+func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, profile uint8, workers int) error {
 	out, err := dest.create()
 	if err != nil {
 		return err

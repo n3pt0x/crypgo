@@ -20,6 +20,8 @@ var (
 
 	ErrInvalidWorkers = errors.New(fmt.Sprintf("--workers must be between 1 and %d", maxWorkers))
 
+	ErrOutputWithMultipleInputs = errors.New("--output can't be used with several input files")
+
 	ErrDeleteNeedsOutput = errors.New("--delete needs an input file and --output <file>")
 	ErrDeleteSameFile    = errors.New("--delete: output and input are the same file")
 )

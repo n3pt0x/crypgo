@@ -36,18 +36,34 @@ func parseAlgo(name string) (uint8, error) {
 	}
 }
 
+// checkOutputCount rejects a single --output shared by several inputs.
+func checkOutputCount(args []string, output string) error {
+	if len(args) > 1 && output != "" {
+		return ErrOutputWithMultipleInputs
+	}
+	return nil
+}
+
+// checkDelete: with several inputs, --output is refused, so each one is deleted
+// once its own default output is written.
 func checkDelete(args []string, output string) error {
-	if fromStdin(args) || output == "" || output == "-" {
+	if fromStdin(args) || output == "-" || (output == "" && len(args) == 1) {
 		return ErrDeleteNeedsOutput
 	}
 
-	in, err := os.Stat(args[0])
+	if output == "" {
+		return nil
+	}
+
+	out, err := os.Stat(output)
 	if err != nil {
 		return nil
 	}
-	out, err := os.Stat(output)
-	if err == nil && os.SameFile(in, out) {
-		return ErrDeleteSameFile
+
+	for _, arg := range args {
+		if in, err := os.Stat(arg); err == nil && os.SameFile(in, out) {
+			return ErrDeleteSameFile
+		}
 	}
 
 	return nil

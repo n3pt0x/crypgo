@@ -12,9 +12,9 @@ import (
 var decryptOpts ioOptions
 
 var decryptCmd = &cobra.Command{
-	Use:   "decrypt [file]",
-	Short: "Decrypt a file (or stdin) encrypted with crypgo",
-	Args:  cobra.MaximumNArgs(1),
+	Use:   "decrypt [file...]",
+	Short: "Decrypt files (or stdin) encrypted with crypgo",
+	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		opts := decryptOpts
 
@@ -22,34 +22,50 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
+		if err := checkOutputCount(args, opts.output); err != nil {
+			return err
+		}
+
+		allPath := decryptDefaultPath(args)
+
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
 				return err
 			}
 		}
 
-		in, err := openInput(args)
+		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
-		defer in.Close()
+		defer closeInputs(ins)
 
-		dest, err := resolveOutput(opts.output, decryptDefaultPath(args), opts.force, fromStdin(args))
+		passphrase, err := readPassphrase(false)
 		if err != nil {
 			return err
 		}
+		defer password.ZeroBytes(passphrase)
 
-		if err := decrypt(in, dest, opts.workers); err != nil {
-			return err
-		}
+		for key, in := range ins {
+			dest, err := resolveOutput(opts.output, allPath[key], opts.force, fromStdin(args))
+			if err != nil {
+				return err
+			}
 
-		if dest.path != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dest.path)
-		}
+			if err := decrypt(in, passphrase, dest, opts.workers); err != nil {
+				return err
+			}
 
-		if opts.erase {
-			in.Close() // an open file cannot be removed on Windows
-			return removeOriginal(cmd, args[0])
+			if dest.path != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dest.path)
+			}
+
+			if opts.erase {
+				in.Close() // an open file cannot be removed on Windows
+				if err := removeOriginal(cmd, in.file.Name()); err != nil {
+					return err
+				}
+			}
 		}
 
 		return nil
@@ -63,24 +79,26 @@ func init() {
 	rootCmd.AddCommand(decryptCmd)
 }
 
-func decryptDefaultPath(args []string) string {
-	if fromStdin(args) || !strings.HasSuffix(args[0], encryptedExt) {
-		return ""
+func decryptDefaultPath(args []string) []string {
+	if fromStdin(args) {
+		return []string{""}
 	}
-	return strings.TrimSuffix(args[0], encryptedExt)
+
+	out := make([]string, 0, len(args))
+
+	for _, arg := range args {
+		format := strings.TrimSuffix(arg, encryptedExt)
+		out = append(out, format)
+	}
+
+	return out
 }
 
-func decrypt(in *input, dest destination, workers int) error {
+func decrypt(in *input, passphrase []byte, dest destination, workers int) error {
 	header, err := core.ReadHeader(in)
 	if err != nil {
 		return err
 	}
-
-	passphrase, err := readPassphrase(false)
-	if err != nil {
-		return err
-	}
-	defer password.ZeroBytes(passphrase)
 
 	out, err := dest.create()
 	if err != nil {
