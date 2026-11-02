@@ -14,6 +14,7 @@ var (
 	encryptOpts     ioOptions
 	encryptAlgo     string
 	encryptParanoid bool
+	encryptExt      string
 )
 
 var encryptCmd = &cobra.Command{
@@ -93,6 +94,7 @@ func init() {
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
+	encryptCmd.Flags().StringVarP(&encryptExt, "extension", "e", "", "give an extension for all output, when mutliples files are gived in command")
 	rootCmd.AddCommand(encryptCmd)
 }
 
@@ -101,10 +103,16 @@ func encryptDefaultPath(args []string) []string {
 		return []string{""}
 	}
 
-	out := make([]string, 0, len(args))
+	var ext string
+	if len(encryptExt) > 0 {
+		ext = encryptExt
+	} else {
+		ext = encryptedExt
+	}
 
+	out := make([]string, 0, len(args))
 	for _, arg := range args {
-		out = append(out, arg+encryptedExt)
+		out = append(out, arg+ext)
 	}
 
 	return out
