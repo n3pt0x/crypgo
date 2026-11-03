@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 
 	"github.com/n3pt0x/crypgo/internal/armor"
+	"github.com/n3pt0x/crypgo/internal/core"
 	"github.com/n3pt0x/crypgo/internal/fileio"
+	"github.com/n3pt0x/crypgo/internal/format"
 )
 
 func checkOutput(path string, force bool) error {
@@ -95,6 +97,30 @@ func (in *input) unarmor() error {
 
 	in.Reader = bufio.NewReader(r)
 	return nil
+}
+
+// readHeaders reads the header of every input, decoding the armored ones first.
+// It is done before asking for the passphrase, so an invalid file is refused early.
+func readHeaders(ins []*input) ([]format.HeaderSymmetric, error) {
+	headers := make([]format.HeaderSymmetric, 0, len(ins))
+
+	for _, in := range ins {
+		if err := in.unarmor(); err != nil {
+			return nil, err
+		}
+
+		header, err := core.ReadHeader(in)
+		if err != nil {
+			if errors.Is(err, format.ErrInvalidMagic) && in.file != nil {
+				// err + filename
+				return nil, fmt.Errorf("%v: %s", err, in.file.Name())
+			}
+			return nil, err
+		}
+		headers = append(headers, header)
+	}
+
+	return headers, nil
 }
 
 // peek makes sure the input is not empty.

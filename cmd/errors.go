@@ -27,4 +27,6 @@ var (
 	ErrDeleteRestricted  = errors.New("--delete is restricted for Stdin pipe")
 	ErrDeleteNeedsOutput = errors.New("--delete needs an input file and --output <file>")
 	ErrDeleteSameFile    = errors.New("--delete: output and input are the same file")
+
+	ErrRekeyStdin = errors.New("rekey needs file arguments: it rewrites the files in place")
 )

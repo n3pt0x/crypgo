@@ -132,15 +132,10 @@ func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, prof
 		return err
 	}
 
-	var w io.Writer = out
-	var armored io.WriteCloser
-	if enc != armor.None {
-		armored, err = armor.NewWriter(out, enc)
-		if err != nil {
-			out.Abort()
-			return err
-		}
-		w = armored
+	w, finish, err := armorOutput(out, enc)
+	if err != nil {
+		out.Abort()
+		return err
 	}
 
 	if err := core.EncryptSymmetric(in, w, passphrase, algo, profile, core.Options{Workers: workers}); err != nil {
@@ -148,13 +143,25 @@ func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, prof
 		return err
 	}
 
-	// flushes the end of the encoded text and writes the footer
-	if armored != nil {
-		if err := armored.Close(); err != nil {
-			out.Abort()
-			return err
-		}
+	if err := finish(); err != nil {
+		out.Abort()
+		return err
 	}
 
 	return out.Commit()
+}
+
+// armorOutput wraps out to write the armor encoding enc, and leaves it as it is
+// for armor.None. The returned function must be called after the last write: it
+// flushes the end of the encoded text and writes the footer.
+func armorOutput(out io.Writer, enc armor.Encoding) (io.Writer, func() error, error) {
+	if enc == armor.None {
+		return out, func() error { return nil }, nil
+	}
+
+	w, err := armor.NewWriter(out, enc)
+	if err != nil {
+		return nil, nil, err
+	}
+	return w, w.Close, nil
 }
