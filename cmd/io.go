@@ -212,6 +212,14 @@ func (d destination) create() (*output, error) {
 	return &output{Writer: f, file: f}, nil
 }
 
+// Chmod sets the permissions of the file
+func (o *output) Chmod(mode os.FileMode) error {
+	if o.file == nil {
+		return nil
+	}
+	return o.file.Chmod(mode)
+}
+
 func (o *output) Commit() error {
 	if o.file == nil {
 		return nil

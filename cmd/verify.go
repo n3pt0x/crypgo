@@ -24,6 +24,12 @@ var verifyCmd = &cobra.Command{
 			return err
 		}
 
+		// headers
+		headers, err := readHeaders(ins)
+		if err != nil {
+			return err
+		}
+
 		// passphrase
 		passphrase, err := readPassphrase(promptPassphrase, false)
 		if err != nil {
@@ -33,17 +39,12 @@ var verifyCmd = &cobra.Command{
 
 		defer closeInputs(ins)
 
-		for _, in := range ins {
+		for key, in := range ins {
 			if err := in.unarmor(); err != nil {
 				return err
 			}
 
-			header, err := core.ReadHeader(in)
-			if err != nil {
-				return err
-			}
-
-			if err := core.VerifySymmetric(header, in, passphrase, verifyWorkers); err != nil {
+			if err := core.VerifySymmetric(headers[key], in, passphrase, verifyWorkers); err != nil {
 				return err
 			}
 

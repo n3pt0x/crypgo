@@ -105,6 +105,56 @@ func TestReaderToleratesCRLF(t *testing.T) {
 	}
 }
 
+// what a copy and paste, a mail or an editor can add before the header
+func TestReaderToleratesLeadingBlank(t *testing.T) {
+	data := []byte("My super secret message !!!")
+	valid := encode(t, armor.Base64, data)
+
+	prefixes := map[string]string{
+		"blank lines":     "\n\r\n",
+		"indentation":     "   \t",
+		"byte order mark": "\xef\xbb\xbf",
+		"both":            "\xef\xbb\xbf\n  ",
+	}
+
+	for name, prefix := range prefixes {
+		t.Run(name, func(t *testing.T) {
+			got, err := decode(prefix + valid)
+			if err != nil {
+				t.Fatalf("decode has failed: %v", err)
+			}
+			if !bytes.Equal(got, data) {
+				t.Fatalf("decoded data differs")
+			}
+		})
+	}
+}
+
+func TestWriterClose(t *testing.T) {
+	var out bytes.Buffer
+	w, err := armor.NewWriter(&out, armor.Base64)
+	if err != nil {
+		t.Fatalf("NewWriter has failed: %v", err)
+	}
+	if _, err := w.Write([]byte("data")); err != nil {
+		t.Fatalf("Write has failed: %v", err)
+	}
+
+	for i := range 2 {
+		if err := w.Close(); err != nil {
+			t.Fatalf("Close #%d has failed: %v", i+1, err)
+		}
+	}
+
+	if n := strings.Count(out.String(), armor.ArmorFooter); n != 1 {
+		t.Fatalf("the footer is written %d times, want 1", n)
+	}
+
+	if _, err := w.Write([]byte("more")); !errors.Is(err, armor.ErrClosed) {
+		t.Fatalf("Write after Close = %v, want %v", err, armor.ErrClosed)
+	}
+}
+
 // the body can be on a single line of any length, and arrive a byte at a time
 func TestReaderUnwrappedBody(t *testing.T) {
 	data := bytes.Repeat([]byte{0, 1, 254, 255}, 100000)
@@ -140,10 +190,10 @@ func TestReaderErrors(t *testing.T) {
 		text string
 		want error
 	}{
-		"not an armor":     {"hello world\n", armor.ErrInvalidArmor},
+		"not an armor":     {"hello world\n", armor.ErrInvalidArmorHeader},
 		"missing footer":   {strings.Replace(valid, armor.ArmorFooter+"\n", "", 1), armor.ErrTruncated},
 		"unknown encoding": {strings.Replace(valid, armor.ArmorFormatBase64, "Encoding: base32", 1), armor.ErrUnknownEncoding},
-		"missing blank":    {armor.ArmorHeader + "\n" + armor.ArmorFormatBase64 + "\nAAAA\n", armor.ErrInvalidArmor},
+		"missing blank":    {armor.ArmorHeader + "\n" + armor.ArmorFormatBase64 + "\nAAAA\n", armor.ErrInvalidArmorHeader},
 	}
 
 	for name, tt := range tests {
@@ -187,10 +237,15 @@ func TestIsArmored(t *testing.T) {
 		text string
 		want bool
 	}{
-		"armored": {armored, true},
-		"raw":     {"CRYPGO\x01\x01binary", false},
-		"short":   {"ab", false},
-		"empty":   {"", false},
+		"armored":          {armored, true},
+		"blank lines":      {"\n\r\n" + armored, true},
+		"indented":         {"   \t" + armored, true},
+		"byte order mark":  {"\xef\xbb\xbf" + armored, true},
+		"raw":              {"CRYPGO\x01\x01binary", false},
+		"short":            {"ab", false},
+		"only blank":       {" \n\t ", false},
+		"dashes not first": {"x-----", false},
+		"empty":            {"", false},
 	}
 
 	for name, tt := range tests {

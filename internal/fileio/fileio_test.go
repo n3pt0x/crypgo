@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/n3pt0x/crypgo/internal/fileio"
@@ -62,6 +63,30 @@ func TestAtomicWriterCommit(t *testing.T) {
 
 	if n := countEntries(t, dir); n != 1 {
 		t.Fatalf("directory has %d entries, want 1 (temporary file left behind?)", n)
+	}
+}
+
+func TestAtomicWriterChmod(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not supported on Windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "out")
+
+	w := writeAtomic(t, path, "content")
+	if err := w.Chmod(0o640); err != nil {
+		t.Fatalf("Chmod has failed: %v", err)
+	}
+	if err := w.Commit(); err != nil {
+		t.Fatalf("Commit has failed: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Fatalf("mode = %o, want 640", got)
 	}
 }
 

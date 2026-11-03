@@ -58,6 +58,10 @@ func (a *AtomicWriter) Write(p []byte) (int, error) {
 	return a.f.Write(p)
 }
 
+func (a *AtomicWriter) Chmod(mode os.FileMode) error {
+	return a.f.Chmod(mode)
+}
+
 // finish stops listening for signals.
 func (a *AtomicWriter) finish() {
 	a.once.Do(func() {

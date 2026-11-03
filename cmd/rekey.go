@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -104,8 +105,25 @@ func init() {
 }
 
 func rekey(in *input, header format.HeaderSymmetric, oldPassphrase, newPassphrase []byte, algo, profile uint8, enc armor.Encoding, workers int) error {
-	out, err := destination{path: in.file.Name()}.create()
+	// a symbolic link must not be replaced by a file: rekey the file it points to
+	path, err := filepath.EvalSymlinks(in.file.Name())
 	if err != nil {
+		return err
+	}
+
+	info, err := in.file.Stat()
+	if err != nil {
+		return err
+	}
+
+	out, err := destination{path: path}.create()
+	if err != nil {
+		return err
+	}
+
+	// keeps file permission
+	if err := out.Chmod(info.Mode().Perm()); err != nil {
+		out.Abort()
 		return err
 	}
 
