@@ -26,7 +26,7 @@ func newAEAD(algo uint8, key []byte) (cipher.AEAD, error) {
 }
 
 func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, profile uint8, opts Options) error {
-	var salt []byte = encryption.GenerateSalt()
+	salt := encryption.GenerateSalt()
 
 	var header format.HeaderSymmetric
 

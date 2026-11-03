@@ -6,7 +6,6 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
-	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/password"
 	"github.com/spf13/cobra"
 )
@@ -28,18 +27,12 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		enc := armor.None
-		if cmd.Flags().Changed("armor") {
-			enc, err = armor.ParseEncoding(encryptArmor)
-			if err != nil {
-				return err
-			}
+		enc, err := parseArmor(cmd, encryptArmor)
+		if err != nil {
+			return err
 		}
 
-		profile := uint8(encryption.KDFProfileArgon2idDefault)
-		if encryptParanoid {
-			profile = encryption.KDFProfileArgon2idParanoid
-		}
+		profile := kdfProfile(encryptParanoid)
 
 		opts := encryptOpts
 
@@ -106,8 +99,7 @@ func init() {
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
-	encryptCmd.Flags().StringVar(&encryptArmor, "armor", "", "write text instead of binary: --armor (base64) | --armor=hex (decrypt detects it)")
-	encryptCmd.Flags().Lookup("armor").NoOptDefVal = "base64"
+	bindArmor(encryptCmd, &encryptArmor, "write text instead of binary: --armor (base64) | --armor=hex (decrypt detects it)")
 	rootCmd.AddCommand(encryptCmd)
 }
 
@@ -131,20 +123,18 @@ func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, prof
 	if err != nil {
 		return err
 	}
+	defer out.Abort() // does nothing once committed
 
 	w, finish, err := armorOutput(out, enc)
 	if err != nil {
-		out.Abort()
 		return err
 	}
 
 	if err := core.EncryptSymmetric(in, w, passphrase, algo, profile, core.Options{Workers: workers}); err != nil {
-		out.Abort()
 		return err
 	}
 
 	if err := finish(); err != nil {
-		out.Abort()
 		return err
 	}
 

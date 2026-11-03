@@ -109,9 +109,9 @@ func decrypt(in *input, passphrase []byte, header format.HeaderSymmetric, dest d
 	if err != nil {
 		return err
 	}
+	defer out.Abort() // does nothing once committed
 
 	if err := core.DecryptSymmetric(header, in, out, passphrase, workers); err != nil {
-		out.Abort()
 		return err
 	}
 

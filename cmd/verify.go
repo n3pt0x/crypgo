@@ -23,6 +23,7 @@ var verifyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer closeInputs(ins)
 
 		// headers
 		headers, err := readHeaders(ins)
@@ -36,8 +37,6 @@ var verifyCmd = &cobra.Command{
 			return err
 		}
 		defer password.ZeroBytes(passphrase)
-
-		defer closeInputs(ins)
 
 		for key, in := range ins {
 			if err := core.VerifySymmetric(headers[key], in, passphrase, verifyWorkers); err != nil {

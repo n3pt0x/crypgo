@@ -6,7 +6,6 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
-	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
 	"github.com/n3pt0x/crypgo/internal/password"
 	"github.com/spf13/cobra"
@@ -21,7 +20,7 @@ var (
 
 var rekeyCmd = &cobra.Command{
 	Use:   "rekey [file...]",
-	Short: "Change passphrase for multiples files (files must have the same passphrase)",
+	Short: "Change the passphrase of files, in place (they must share the same passphrase)",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkWorkers(rekeyWorkers); err != nil {
@@ -36,18 +35,12 @@ var rekeyCmd = &cobra.Command{
 			}
 		}
 
-		enc := armor.None
-		if cmd.Flags().Changed("armor") {
-			var err error
-			if enc, err = armor.ParseEncoding(rekeyArmor); err != nil {
-				return err
-			}
+		enc, err := parseArmor(cmd, rekeyArmor)
+		if err != nil {
+			return err
 		}
 
-		profile := uint8(encryption.KDFProfileArgon2idDefault)
-		if rekeyParanoid {
-			profile = encryption.KDFProfileArgon2idParanoid
-		}
+		profile := kdfProfile(rekeyParanoid)
 
 		if fromStdin(args) {
 			return ErrRekeyStdin
@@ -99,8 +92,7 @@ func init() {
 	rekeyCmd.Flags().IntVarP(&rekeyWorkers, "workers", "w", defaultWorkers(), "chunks re-encrypted in parallel")
 	rekeyCmd.Flags().StringVarP(&rekeyAlgo, "algo", "a", "", "algorithm: aes-gcm | xchacha20 (default: the one of each file)")
 	rekeyCmd.Flags().BoolVar(&rekeyParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
-	rekeyCmd.Flags().StringVar(&rekeyArmor, "armor", "", "write text instead of binary: --armor (base64) | --armor=hex (an armored file is written as binary without it)")
-	rekeyCmd.Flags().Lookup("armor").NoOptDefVal = "base64"
+	bindArmor(rekeyCmd, &rekeyArmor, "write text instead of binary: --armor (base64) | --armor=hex (an armored file is written as binary without it)")
 	rootCmd.AddCommand(rekeyCmd)
 }
 
@@ -120,26 +112,23 @@ func rekey(in *input, header format.HeaderSymmetric, oldPassphrase, newPassphras
 	if err != nil {
 		return err
 	}
+	defer out.Abort() // does nothing once committed
 
 	// keeps file permission
 	if err := out.Chmod(info.Mode().Perm()); err != nil {
-		out.Abort()
 		return err
 	}
 
 	w, finish, err := armorOutput(out, enc)
 	if err != nil {
-		out.Abort()
 		return err
 	}
 
 	if err := core.RekeySymmetric(header, in, w, oldPassphrase, newPassphrase, algo, profile, core.Options{Workers: workers}); err != nil {
-		out.Abort()
 		return err
 	}
 
 	if err := finish(); err != nil {
-		out.Abort()
 		return err
 	}
 

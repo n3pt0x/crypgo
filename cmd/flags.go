@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/n3pt0x/crypgo/internal/armor"
+	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +39,28 @@ func outputExt(extension string) string {
 		return "." + extension
 	}
 	return extension
+}
+
+// kdfProfile is the Argon2id profile asked with --paranoid.
+func kdfProfile(paranoid bool) uint8 {
+	if paranoid {
+		return encryption.KDFProfileArgon2idParanoid
+	}
+	return encryption.KDFProfileArgon2idDefault
+}
+
+// bindArmor declares --armor, which gives base64 when it has no value.
+func bindArmor(cmd *cobra.Command, value *string, usage string) {
+	cmd.Flags().StringVar(value, "armor", "", usage)
+	cmd.Flags().Lookup("armor").NoOptDefVal = "base64"
+}
+
+// parseArmor is the encoding asked with --armor, or armor.None without it.
+func parseArmor(cmd *cobra.Command, value string) (armor.Encoding, error) {
+	if !cmd.Flags().Changed("armor") {
+		return armor.None, nil
+	}
+	return armor.ParseEncoding(value)
 }
 
 func parseAlgo(name string) (uint8, error) {
