@@ -72,14 +72,14 @@ func TestWriterFormat(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			lines := strings.Split(strings.TrimSuffix(encode(t, enc, data), "\n"), "\n")
 
-			if lines[0] != armor.ArmorHeader {
-				t.Fatalf("first line = %q, want %q", lines[0], armor.ArmorHeader)
+			if lines[0] != armor.Header {
+				t.Fatalf("first line = %q, want %q", lines[0], armor.Header)
 			}
 			if want := "Encoding: " + name; lines[1] != want {
 				t.Fatalf("second line = %q, want %q", lines[1], want)
 			}
-			if last := lines[len(lines)-1]; last != armor.ArmorFooter {
-				t.Fatalf("last line = %q, want %q", last, armor.ArmorFooter)
+			if last := lines[len(lines)-1]; last != armor.Footer {
+				t.Fatalf("last line = %q, want %q", last, armor.Footer)
 			}
 
 			for _, line := range lines[3 : len(lines)-1] {
@@ -146,7 +146,7 @@ func TestWriterClose(t *testing.T) {
 		}
 	}
 
-	if n := strings.Count(out.String(), armor.ArmorFooter); n != 1 {
+	if n := strings.Count(out.String(), armor.Footer); n != 1 {
 		t.Fatalf("the footer is written %d times, want 1", n)
 	}
 
@@ -165,7 +165,7 @@ func TestReaderUnwrappedBody(t *testing.T) {
 
 			// header (3 lines), body, footer, empty line after the last "\n"
 			body := strings.Join(lines[3:len(lines)-2], "")
-			text := strings.Join(lines[:3], "\n") + "\n" + body + "\n" + armor.ArmorFooter + "\n"
+			text := strings.Join(lines[:3], "\n") + "\n" + body + "\n" + armor.Footer + "\n"
 
 			r, err := armor.NewReader(bufio.NewReader(iotest.OneByteReader(strings.NewReader(text))))
 			if err != nil {
@@ -190,10 +190,10 @@ func TestReaderErrors(t *testing.T) {
 		text string
 		want error
 	}{
-		"not an armor":     {"hello world\n", armor.ErrInvalidArmorHeader},
-		"missing footer":   {strings.Replace(valid, armor.ArmorFooter+"\n", "", 1), armor.ErrTruncated},
-		"unknown encoding": {strings.Replace(valid, armor.ArmorFormatBase64, "Encoding: base32", 1), armor.ErrUnknownEncoding},
-		"missing blank":    {armor.ArmorHeader + "\n" + armor.ArmorFormatBase64 + "\nAAAA\n", armor.ErrInvalidArmorHeader},
+		"not an armor":     {"hello world\n", armor.ErrInvalidHeader},
+		"missing footer":   {strings.Replace(valid, armor.Footer+"\n", "", 1), armor.ErrTruncated},
+		"unknown encoding": {strings.Replace(valid, armor.FormatBase64, "Encoding: base32", 1), armor.ErrUnknownEncoding},
+		"missing blank":    {armor.Header + "\n" + armor.FormatBase64 + "\nAAAA\n", armor.ErrInvalidHeader},
 	}
 
 	for name, tt := range tests {
@@ -205,7 +205,7 @@ func TestReaderErrors(t *testing.T) {
 	}
 
 	t.Run("invalid characters", func(t *testing.T) {
-		text := armor.ArmorHeader + "\n" + armor.ArmorFormatHex + "\n\nzz\n" + armor.ArmorFooter + "\n"
+		text := armor.Header + "\n" + armor.FormatHex + "\n\nzz\n" + armor.Footer + "\n"
 		if _, err := decode(text); err == nil {
 			t.Fatal("expected an error for a non-hex body")
 		}

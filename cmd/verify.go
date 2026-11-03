@@ -40,10 +40,6 @@ var verifyCmd = &cobra.Command{
 		defer closeInputs(ins)
 
 		for key, in := range ins {
-			if err := in.unarmor(); err != nil {
-				return err
-			}
-
 			if err := core.VerifySymmetric(headers[key], in, passphrase, verifyWorkers); err != nil {
 				return err
 			}

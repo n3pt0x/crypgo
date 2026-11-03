@@ -105,6 +105,7 @@ func readHeaders(ins []*input) ([]format.HeaderSymmetric, error) {
 	headers := make([]format.HeaderSymmetric, 0, len(ins))
 
 	for _, in := range ins {
+		// check armor
 		if err := in.unarmor(); err != nil {
 			return nil, err
 		}

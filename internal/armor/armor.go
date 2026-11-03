@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	ArmorHeader       = "-----BEGIN CRYPGO MESSAGE-----"
-	ArmorFooter       = "-----END CRYPGO MESSAGE-----"
-	ArmorFormatBase64 = "Encoding: base64"
-	ArmorFormatHex    = "Encoding: hex"
+	Header       = "-----BEGIN CRYPGO MESSAGE-----"
+	Footer       = "-----END CRYPGO MESSAGE-----"
+	FormatBase64 = "Encoding: base64"
+	FormatHex    = "Encoding: hex"
 )
 
 const lineWidth = 64
@@ -30,11 +30,11 @@ const (
 )
 
 var (
-	ErrClosed             = errors.New("armor writer is closed")
-	ErrUnknownEncoding    = errors.New("unknown armor encoding (expected: base64, hex)")
-	ErrInvalidArmorHeader = errors.New("invalid armor: header not recognized")
-	ErrInvalidArmorFooter = errors.New("invalid armor: footer not recognized")
-	ErrTruncated          = errors.New("invalid armor: end line is missing, the data is truncated")
+	ErrClosed          = errors.New("armor writer is closed")
+	ErrUnknownEncoding = errors.New("unknown armor encoding (expected: base64, hex)")
+	ErrInvalidHeader   = errors.New("invalid armor: header not recognized")
+	ErrInvalidFooter   = errors.New("invalid armor: footer not recognized")
+	ErrTruncated       = errors.New("invalid armor: end line is missing, the data is truncated")
 )
 
 type Encoding uint8
@@ -58,9 +58,9 @@ func ParseEncoding(name string) (Encoding, error) {
 
 func (e Encoding) line() string {
 	if e == Hex {
-		return ArmorFormatHex
+		return FormatHex
 	}
-	return ArmorFormatBase64
+	return FormatBase64
 }
 
 // NewWriter writes the armor header to w, then encodes what is written to it.
@@ -71,7 +71,7 @@ func NewWriter(w io.Writer, enc Encoding) (io.WriteCloser, error) {
 		return nil, ErrUnknownEncoding
 	}
 
-	if _, err := io.WriteString(w, ArmorHeader+"\n"+enc.line()+"\n\n"); err != nil {
+	if _, err := io.WriteString(w, Header+"\n"+enc.line()+"\n\n"); err != nil {
 		return nil, err
 	}
 
@@ -176,7 +176,7 @@ func (l *lineWriter) finish() error {
 		l.col = 0
 	}
 
-	l.buf = append(l.buf, ArmorFooter+"\n"...)
+	l.buf = append(l.buf, Footer+"\n"...)
 	return l.flush()
 }
 
@@ -218,26 +218,26 @@ func NewReader(br *bufio.Reader) (io.Reader, error) {
 	br.Discard(leadingBlank(br))
 
 	header, err := readHeaderLine(br)
-	if err != nil || header != ArmorHeader {
-		return nil, ErrInvalidArmorHeader
+	if err != nil || header != Header {
+		return nil, ErrInvalidHeader
 	}
 
 	format, err := readHeaderLine(br)
 	if err != nil {
-		return nil, ErrInvalidArmorHeader
+		return nil, ErrInvalidHeader
 	}
 
 	// the blank line that ends the header
 	if blank, err := readHeaderLine(br); err != nil || blank != "" {
-		return nil, ErrInvalidArmorHeader
+		return nil, ErrInvalidHeader
 	}
 
 	body := &bodyReader{br: br}
 
 	switch format {
-	case ArmorFormatBase64:
+	case FormatBase64:
 		return base64.NewDecoder(base64.StdEncoding, body), nil
-	case ArmorFormatHex:
+	case FormatHex:
 		return hex.NewDecoder(body), nil
 	default:
 		return nil, ErrUnknownEncoding
@@ -310,13 +310,13 @@ func (b *bodyReader) read(p []byte) (int, error) {
 
 // readFooter checks the footer, and returns io.EOF when it is the right one.
 func (b *bodyReader) readFooter() error {
-	footer := make([]byte, len(ArmorFooter))
+	footer := make([]byte, len(Footer))
 	if _, err := io.ReadFull(b.br, footer); err != nil {
 		return ErrTruncated
 	}
 
-	if string(footer) != ArmorFooter {
-		return ErrInvalidArmorFooter
+	if string(footer) != Footer {
+		return ErrInvalidFooter
 	}
 	return io.EOF
 }
