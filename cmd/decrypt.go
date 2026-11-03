@@ -68,7 +68,7 @@ var decryptCmd = &cobra.Command{
 		}
 
 		// passphrase
-		passphrase, err := readPassphrase(false)
+		passphrase, err := readPassphrase(promptPassphrase, false)
 		if err != nil {
 			return err
 		}

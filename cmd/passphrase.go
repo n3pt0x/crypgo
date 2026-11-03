@@ -11,6 +11,11 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	promptPassphrase    = "Passphrase: "
+	promptNewPassphrase = "New passphrase: "
+)
+
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
@@ -61,7 +66,7 @@ func readPassword(fd int) ([]byte, error) {
 	return term.ReadPassword(fd)
 }
 
-func readPassphrase(confirm bool) ([]byte, error) {
+func readPassphrase(prompt string, confirm bool) ([]byte, error) {
 	tty, err := passphraseTerminal()
 	if err != nil {
 		return nil, err
@@ -71,7 +76,7 @@ func readPassphrase(confirm bool) ([]byte, error) {
 	}
 	fd := int(tty.Fd())
 
-	fmt.Fprint(os.Stderr, "Passphrase: ")
+	fmt.Fprint(os.Stderr, prompt)
 	passphrase, err := readPassword(fd)
 	fmt.Fprintln(os.Stderr)
 	if err != nil {
