@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/password"
@@ -14,6 +15,7 @@ var (
 	encryptOpts     ioOptions
 	encryptAlgo     string
 	encryptParanoid bool
+	encryptArmor    string
 )
 
 var encryptCmd = &cobra.Command{
@@ -24,6 +26,14 @@ var encryptCmd = &cobra.Command{
 		algo, err := parseAlgo(encryptAlgo)
 		if err != nil {
 			return err
+		}
+
+		enc := armor.None
+		if cmd.Flags().Changed("armor") {
+			enc, err = armor.ParseEncoding(encryptArmor)
+			if err != nil {
+				return err
+			}
 		}
 
 		profile := uint8(encryption.KDFProfileArgon2idDefault)
@@ -70,7 +80,7 @@ var encryptCmd = &cobra.Command{
 		defer password.ZeroBytes(passphrase)
 
 		for key, in := range ins {
-			if err := encrypt(in, dests[key], passphrase, algo, profile, opts.workers); err != nil {
+			if err := encrypt(in, dests[key], passphrase, algo, profile, enc, opts.workers); err != nil {
 				return err
 			}
 
@@ -96,6 +106,8 @@ func init() {
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
+	encryptCmd.Flags().StringVar(&encryptArmor, "armor", "", "write text instead of binary: --armor (base64) | --armor=hex (decrypt detects it)")
+	encryptCmd.Flags().Lookup("armor").NoOptDefVal = "base64"
 	rootCmd.AddCommand(encryptCmd)
 }
 
@@ -114,15 +126,34 @@ func encryptDefaultPath(args []string, extension string) []string {
 	return out
 }
 
-func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, profile uint8, workers int) error {
+func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, profile uint8, enc armor.Encoding, workers int) error {
 	out, err := dest.create()
 	if err != nil {
 		return err
 	}
 
-	if err := core.EncryptSymmetric(in, out, passphrase, algo, profile, core.Options{Workers: workers}); err != nil {
+	var w io.Writer = out
+	var armored io.WriteCloser
+	if enc != armor.None {
+		armored, err = armor.NewWriter(out, enc)
+		if err != nil {
+			out.Abort()
+			return err
+		}
+		w = armored
+	}
+
+	if err := core.EncryptSymmetric(in, w, passphrase, algo, profile, core.Options{Workers: workers}); err != nil {
 		out.Abort()
 		return err
+	}
+
+	// flushes the end of the encoded text and writes the footer
+	if armored != nil {
+		if err := armored.Close(); err != nil {
+			out.Abort()
+			return err
+		}
 	}
 
 	return out.Commit()

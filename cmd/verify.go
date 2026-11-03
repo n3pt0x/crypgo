@@ -34,6 +34,10 @@ var verifyCmd = &cobra.Command{
 		defer closeInputs(ins)
 
 		for _, in := range ins {
+			if err := in.unarmor(); err != nil {
+				return err
+			}
+
 			header, err := core.ReadHeader(in)
 			if err != nil {
 				return err

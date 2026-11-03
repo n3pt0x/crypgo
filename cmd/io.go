@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/fileio"
 )
 
@@ -77,6 +78,23 @@ func openInput(args []string) ([]*input, error) {
 	}
 
 	return ins, nil
+}
+
+func (in *input) unarmor() error {
+	if !armor.IsArmored(in.Reader) {
+		return nil
+	}
+
+	r, err := armor.NewReader(in.Reader)
+	if err != nil {
+		if in.file != nil {
+			return fmt.Errorf("%s: %w", in.file.Name(), err)
+		}
+		return err
+	}
+
+	in.Reader = bufio.NewReader(r)
+	return nil
 }
 
 // peek makes sure the input is not empty.

@@ -52,6 +52,10 @@ var decryptCmd = &cobra.Command{
 		// headers
 		var headers = make([]format.HeaderSymmetric, 0, len(dests))
 		for _, in := range ins {
+			if err := in.unarmor(); err != nil {
+				return err
+			}
+
 			header, err := core.ReadHeader(in)
 			if err != nil {
 				if errors.Is(err, format.ErrInvalidMagic) {
