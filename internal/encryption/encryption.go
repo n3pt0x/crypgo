@@ -11,7 +11,14 @@ const (
 )
 
 const (
-	// A chunk nonce is: random prefix | chunk index | last-chunk flag.
+	// X25519 keys, for the public-key mode.
+	PublicKeySize         = 32
+	PrivateKeySize        = 32
+	WrappedPrivateKeySize = PrivateKeySize + GCMTagSize // XChaCha20-Poly1305 has the same 16-byte tag
+)
+
+const (
+	// random prefix | chunk index | last-chunk flag.
 	NonceCounterSize  = 8
 	NonceLastFlagSize = 1
 	NoncePrefixSize   = NonceSizeXChaCha20Poly1305 - NonceCounterSize - NonceLastFlagSize // AES-GCM uses only the first 3 bytes
@@ -29,9 +36,11 @@ type Argon2Params struct {
 }
 
 var (
-	ErrEncryptionFailed  = errors.New("encryption failed")
-	ErrDecryptionFailed  = errors.New("wrong passphrase or corrupted file")
-	ErrUnknownKDFProfile = errors.New("unknown KDF profile")
+	ErrEncryptionFailed   = errors.New("encryption failed")
+	ErrDecryptionFailed   = errors.New("wrong passphrase or corrupted file")
+	ErrUnknownKDFProfile  = errors.New("unknown KDF profile")
+	ErrWrongIdentity      = errors.New("not encrypted for this private key, or corrupted file")
+	ErrWrongKeyPassphrase = errors.New("wrong passphrase or corrupted private key")
 )
 
 var kdfProfiles = map[uint8]Argon2Params{
