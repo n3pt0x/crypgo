@@ -26,7 +26,7 @@ func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format
 	var privKey format.PrivateKey
 	privKey.Header = format.PrivateKeyHeader{
 		Magic:      format.MagicBytes,
-		Version:    format.KeyVersion,
+		Version:    format.Version,
 		Mode:       format.ModePrivateKey,
 		KDFMemory:  argon2Params.Memory,
 		KDFTime:    argon2Params.Time,
@@ -56,7 +56,7 @@ func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format
 	// pub
 	pubKey := format.PublicKey{
 		Magic:   format.MagicBytes,
-		Version: format.KeyVersion,
+		Version: format.Version,
 		Mode:    format.ModePublicKey,
 		Public:  [encryption.PublicKeySize]byte(key.PublicKey().Bytes()),
 	}
@@ -67,5 +67,30 @@ func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format
 // OpenPrivateKey decrypts the private key with passphrase. A wrong passphrase or
 // a modified file fails with encryption.ErrWrongKeyPassphrase.
 func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (*ecdh.PrivateKey, error) {
-	panic("TODO: OpenPrivateKey")
+	if err := key.IsValid(); err != nil {
+		return nil, err
+	}
+
+	argon2Params := encryption.Argon2Params{
+		Memory:  key.Header.KDFMemory,
+		Time:    key.Header.KDFTime,
+		Threads: key.Header.KDFThreads,
+	}
+
+	derivedKey := encryption.DerivedKeyArgon2IDWithParams(passphrase, key.Header.Salt[:], argon2Params)
+	defer password.ZeroBytes(derivedKey)
+
+	aead, err := encryption.NewXChaCha20Poly1305(derivedKey)
+	if err != nil {
+		return nil, err
+	}
+
+	plain, err := aead.Open(nil, key.Header.Nonce[:], key.Wrapped[:], key.Header.Bytes())
+	if err != nil {
+		return nil, encryption.ErrWrongKeyPassphrase
+	}
+
+	defer password.ZeroBytes(plain)
+
+	return encryption.ParseX25519Private(plain)
 }

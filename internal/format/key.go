@@ -6,8 +6,6 @@ import (
 	"github.com/n3pt0x/crypgo/internal/encryption"
 )
 
-const KeyVersion = 1
-
 type PublicKey struct {
 	Magic   [6]byte
 	Version uint8
@@ -29,6 +27,8 @@ type PrivateKeyHeader struct {
 	Nonce      [encryption.NonceSizeXChaCha20Poly1305]byte // the key is always sealed with XChaCha20-Poly1305
 }
 
+const PrivateKeyHeaderSize = 57
+
 // PrivateKey is the binary form of a private key file (57 + 48 bytes):
 // the header, then the X25519 private key encrypted with a key derived from the
 // passphrase (32 bytes of key and the 16-byte Poly1305 tag).
@@ -40,7 +40,7 @@ type PrivateKey struct {
 // PublicKey
 
 func (k PublicKey) IsValid() error {
-	if err := validPrefix(k.Magic, k.Version, KeyVersion, k.Mode, ModePublicKey); err != nil {
+	if err := validPrefix(k.Magic, k.Version, Version, k.Mode, ModePublicKey); err != nil {
 		return err
 	}
 
@@ -59,7 +59,7 @@ func (k *PublicKey) ReadFrom(r io.Reader) (int64, error) {
 
 // IsValid checks the prefix (magic, version, mode) and the KDF parameters.
 func (h PrivateKeyHeader) IsValid() error {
-	if err := validPrefix(h.Magic, h.Version, KeyVersion, h.Mode, ModePrivateKey); err != nil {
+	if err := validPrefix(h.Magic, h.Version, Version, h.Mode, ModePrivateKey); err != nil {
 		return err
 	}
 
