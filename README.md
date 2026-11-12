@@ -87,6 +87,9 @@ crypgo rekey --armor a.txt.crypgo
 ### Stdin, stdout and pipes
 
 ```bash
+# File
+crypgo encrypt file.txt -o - > file.enc
+
 # Messages
 echo "Hello World" | crypgo encrypt > msg.crypgo
 crypgo decrypt < msg.crypgo
