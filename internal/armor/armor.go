@@ -10,11 +10,23 @@ import (
 )
 
 const (
-	Header       = "-----BEGIN CRYPGO MESSAGE-----"
-	Footer       = "-----END CRYPGO MESSAGE-----"
 	FormatBase64 = "Encoding: base64"
 	FormatHex    = "Encoding: hex"
 )
+
+// Label names what an armored block holds, in its header and its footer. A
+// reader expects one label and refuses the others, so a key cannot be taken
+// for a message.
+type Label string
+
+const (
+	Message    Label = "CRYPGO MESSAGE"
+	PublicKey  Label = "CRYPGO PUBLIC KEY"
+	PrivateKey Label = "CRYPGO PRIVATE KEY" // not "PRIVATE KEY": that is the PKCS#8 label
+)
+
+func (l Label) Header() string { return dashes + "BEGIN " + string(l) + dashes }
+func (l Label) Footer() string { return dashes + "END " + string(l) + dashes }
 
 const lineWidth = 64
 
@@ -63,19 +75,19 @@ func (e Encoding) line() string {
 	return FormatBase64
 }
 
-// NewWriter writes the armor header to w, then encodes what is written to it.
-// Close must be called to flush the encoder and write the footer; it does not
-// close w.
-func NewWriter(w io.Writer, enc Encoding) (io.WriteCloser, error) {
+// NewWriter writes the armor header of label to w, then encodes what is written
+// to it. Close must be called to flush the encoder and write the footer; it does
+// not close w.
+func NewWriter(w io.Writer, label Label, enc Encoding) (io.WriteCloser, error) {
 	if enc != Base64 && enc != Hex {
 		return nil, ErrUnknownEncoding
 	}
 
-	if _, err := io.WriteString(w, Header+"\n"+enc.line()+"\n\n"); err != nil {
+	if _, err := io.WriteString(w, label.Header()+"\n"+enc.line()+"\n\n"); err != nil {
 		return nil, err
 	}
 
-	lines := &lineWriter{w: w}
+	lines := &lineWriter{w: w, footer: label.Footer()}
 
 	var encoder io.WriteCloser
 	if enc == Hex {
@@ -127,9 +139,10 @@ func (nopCloser) Close() error { return nil }
 // lineWriter breaks the encoded text into lines of lineWidth characters. The
 // lines are gathered in a small buffer, written to w each time it is full.
 type lineWriter struct {
-	w   io.Writer
-	buf []byte
-	col int
+	w      io.Writer
+	footer string
+	buf    []byte
+	col    int
 }
 
 func (l *lineWriter) Write(p []byte) (int, error) {
@@ -176,7 +189,7 @@ func (l *lineWriter) finish() error {
 		l.col = 0
 	}
 
-	l.buf = append(l.buf, Footer+"\n"...)
+	l.buf = append(l.buf, l.footer+"\n"...)
 	return l.flush()
 }
 
@@ -212,13 +225,14 @@ func isBlank(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
-// NewReader reads the armor header from br, then returns the decoded binary
-// data. The decoded stream fails with ErrTruncated if the footer is missing.
-func NewReader(br *bufio.Reader) (io.Reader, error) {
+// NewReader reads the armor header of label from br, then returns the decoded
+// binary data. Another label is refused with ErrInvalidHeader. The decoded
+// stream fails with ErrTruncated if the footer is missing.
+func NewReader(br *bufio.Reader, label Label) (io.Reader, error) {
 	br.Discard(leadingBlank(br))
 
 	header, err := readHeaderLine(br)
-	if err != nil || header != Header {
+	if err != nil || header != label.Header() {
 		return nil, ErrInvalidHeader
 	}
 
@@ -232,7 +246,7 @@ func NewReader(br *bufio.Reader) (io.Reader, error) {
 		return nil, ErrInvalidHeader
 	}
 
-	body := &bodyReader{br: br}
+	body := &bodyReader{br: br, footer: label.Footer()}
 
 	switch format {
 	case FormatBase64:
@@ -257,8 +271,9 @@ func readHeaderLine(br *bufio.Reader) (string, error) {
 // bodyReader gives the encoded text without its white space, up to the footer.
 // It works on what br has buffered, so the lines can be of any length.
 type bodyReader struct {
-	br  *bufio.Reader
-	err error // once set (io.EOF included), every Read returns it
+	br     *bufio.Reader
+	footer string
+	err    error // once set (io.EOF included), every Read returns it
 }
 
 func (b *bodyReader) Read(p []byte) (int, error) {
@@ -310,12 +325,12 @@ func (b *bodyReader) read(p []byte) (int, error) {
 
 // readFooter checks the footer, and returns io.EOF when it is the right one.
 func (b *bodyReader) readFooter() error {
-	footer := make([]byte, len(Footer))
+	footer := make([]byte, len(b.footer))
 	if _, err := io.ReadFull(b.br, footer); err != nil {
 		return ErrTruncated
 	}
 
-	if string(footer) != Footer {
+	if string(footer) != b.footer {
 		return ErrInvalidFooter
 	}
 	return io.EOF

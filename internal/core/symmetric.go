@@ -68,7 +68,7 @@ func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, p
 	return sealStream(aead, header, r, w, max(opts.Workers, 1))
 }
 
-func ReadHeader(r io.Reader) (format.HeaderSymmetric, error) {
+func ReadHeaderSymmetric(r io.Reader) (format.HeaderSymmetric, error) {
 	var header format.HeaderSymmetric
 
 	if _, err := header.ReadFrom(r); err != nil {

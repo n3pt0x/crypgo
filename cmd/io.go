@@ -87,7 +87,7 @@ func (in *input) unarmor() error {
 		return nil
 	}
 
-	r, err := armor.NewReader(in.Reader)
+	r, err := armor.NewReader(in.Reader, armor.Message)
 	if err != nil {
 		if in.file != nil {
 			return fmt.Errorf("%s: %w", in.file.Name(), err)
@@ -110,7 +110,7 @@ func readHeaders(ins []*input) ([]format.HeaderSymmetric, error) {
 			return nil, err
 		}
 
-		header, err := core.ReadHeader(in)
+		header, err := core.ReadHeaderSymmetric(in)
 		if err != nil {
 			if errors.Is(err, format.ErrInvalidMagic) && in.file != nil {
 				// err + filename

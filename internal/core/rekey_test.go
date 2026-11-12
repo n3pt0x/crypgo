@@ -15,7 +15,7 @@ var newPassphrase = []byte("another horse battery")
 func rekey(data []byte, oldPassphrase []byte, algo uint8, opts core.Options) ([]byte, error) {
 	r := bytes.NewReader(data)
 
-	header, err := core.ReadHeader(r)
+	header, err := core.ReadHeaderSymmetric(r)
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +57,9 @@ func TestRekeySymmetric(t *testing.T) {
 				t.Fatalf("DecryptSymmetric with the old passphrase = %v, want %v", err, encryption.ErrDecryptionFailed)
 			}
 
-			header, err := core.ReadHeader(bytes.NewReader(rekeyed))
+			header, err := core.ReadHeaderSymmetric(bytes.NewReader(rekeyed))
 			if err != nil {
-				t.Fatalf("ReadHeader has failed: %v", err)
+				t.Fatalf("ReadHeaderSymmetric has failed: %v", err)
 			}
 			if header.EncryptionAlgo != algo {
 				t.Fatalf("algorithm = %d, want %d", header.EncryptionAlgo, algo)
@@ -101,9 +101,9 @@ func TestRekeySymmetricInvalidOptions(t *testing.T) {
 	source := encrypt(t, format.AlgoXChaCha20Poly1305, testMessage, core.Options{})
 
 	r := bytes.NewReader(source)
-	header, err := core.ReadHeader(r)
+	header, err := core.ReadHeaderSymmetric(r)
 	if err != nil {
-		t.Fatalf("ReadHeader has failed: %v", err)
+		t.Fatalf("ReadHeaderSymmetric has failed: %v", err)
 	}
 
 	var out bytes.Buffer

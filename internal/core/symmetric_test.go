@@ -34,7 +34,7 @@ func encrypt(t *testing.T, algo uint8, plaintext []byte, opts core.Options) []by
 func decrypt(data []byte, passphrase []byte, workers int) ([]byte, error) {
 	r := bytes.NewReader(data)
 
-	header, err := core.ReadHeader(r)
+	header, err := core.ReadHeaderSymmetric(r)
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +149,9 @@ func TestVerifySymmetric(t *testing.T) {
 
 	verify := func(passphrase []byte) error {
 		r := bytes.NewReader(valid)
-		header, err := core.ReadHeader(r)
+		header, err := core.ReadHeaderSymmetric(r)
 		if err != nil {
-			t.Fatalf("ReadHeader has failed: %v", err)
+			t.Fatalf("ReadHeaderSymmetric has failed: %v", err)
 		}
 		return core.VerifySymmetric(header, r, passphrase, 1)
 	}

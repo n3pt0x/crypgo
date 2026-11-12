@@ -141,15 +141,12 @@ func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, prof
 	return out.Commit()
 }
 
-// armorOutput wraps out to write the armor encoding enc, and leaves it as it is
-// for armor.None. The returned function must be called after the last write: it
-// flushes the end of the encoded text and writes the footer.
 func armorOutput(out io.Writer, enc armor.Encoding) (io.Writer, func() error, error) {
 	if enc == armor.None {
 		return out, func() error { return nil }, nil
 	}
 
-	w, err := armor.NewWriter(out, enc)
+	w, err := armor.NewWriter(out, armor.Message, enc)
 	if err != nil {
 		return nil, nil, err
 	}

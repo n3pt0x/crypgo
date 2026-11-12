@@ -21,7 +21,7 @@ func encode(t *testing.T, enc armor.Encoding, data []byte) string {
 	t.Helper()
 
 	var out bytes.Buffer
-	w, err := armor.NewWriter(&out, enc)
+	w, err := armor.NewWriter(&out, armor.Message, enc)
 	if err != nil {
 		t.Fatalf("NewWriter has failed: %v", err)
 	}
@@ -36,7 +36,7 @@ func encode(t *testing.T, enc armor.Encoding, data []byte) string {
 }
 
 func decode(text string) ([]byte, error) {
-	r, err := armor.NewReader(bufio.NewReader(strings.NewReader(text)))
+	r, err := armor.NewReader(bufio.NewReader(strings.NewReader(text)), armor.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -72,14 +72,14 @@ func TestWriterFormat(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			lines := strings.Split(strings.TrimSuffix(encode(t, enc, data), "\n"), "\n")
 
-			if lines[0] != armor.Header {
-				t.Fatalf("first line = %q, want %q", lines[0], armor.Header)
+			if lines[0] != armor.Message.Header() {
+				t.Fatalf("first line = %q, want %q", lines[0], armor.Message.Header())
 			}
 			if want := "Encoding: " + name; lines[1] != want {
 				t.Fatalf("second line = %q, want %q", lines[1], want)
 			}
-			if last := lines[len(lines)-1]; last != armor.Footer {
-				t.Fatalf("last line = %q, want %q", last, armor.Footer)
+			if last := lines[len(lines)-1]; last != armor.Message.Footer() {
+				t.Fatalf("last line = %q, want %q", last, armor.Message.Footer())
 			}
 
 			for _, line := range lines[3 : len(lines)-1] {
@@ -132,7 +132,7 @@ func TestReaderToleratesLeadingBlank(t *testing.T) {
 
 func TestWriterClose(t *testing.T) {
 	var out bytes.Buffer
-	w, err := armor.NewWriter(&out, armor.Base64)
+	w, err := armor.NewWriter(&out, armor.Message, armor.Base64)
 	if err != nil {
 		t.Fatalf("NewWriter has failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestWriterClose(t *testing.T) {
 		}
 	}
 
-	if n := strings.Count(out.String(), armor.Footer); n != 1 {
+	if n := strings.Count(out.String(), armor.Message.Footer()); n != 1 {
 		t.Fatalf("the footer is written %d times, want 1", n)
 	}
 
@@ -165,9 +165,9 @@ func TestReaderUnwrappedBody(t *testing.T) {
 
 			// header (3 lines), body, footer, empty line after the last "\n"
 			body := strings.Join(lines[3:len(lines)-2], "")
-			text := strings.Join(lines[:3], "\n") + "\n" + body + "\n" + armor.Footer + "\n"
+			text := strings.Join(lines[:3], "\n") + "\n" + body + "\n" + armor.Message.Footer() + "\n"
 
-			r, err := armor.NewReader(bufio.NewReader(iotest.OneByteReader(strings.NewReader(text))))
+			r, err := armor.NewReader(bufio.NewReader(iotest.OneByteReader(strings.NewReader(text))), armor.Message)
 			if err != nil {
 				t.Fatalf("NewReader has failed: %v", err)
 			}
@@ -191,9 +191,9 @@ func TestReaderErrors(t *testing.T) {
 		want error
 	}{
 		"not an armor":     {"hello world\n", armor.ErrInvalidHeader},
-		"missing footer":   {strings.Replace(valid, armor.Footer+"\n", "", 1), armor.ErrTruncated},
+		"missing footer":   {strings.Replace(valid, armor.Message.Footer()+"\n", "", 1), armor.ErrTruncated},
 		"unknown encoding": {strings.Replace(valid, armor.FormatBase64, "Encoding: base32", 1), armor.ErrUnknownEncoding},
-		"missing blank":    {armor.Header + "\n" + armor.FormatBase64 + "\nAAAA\n", armor.ErrInvalidHeader},
+		"missing blank":    {armor.Message.Header() + "\n" + armor.FormatBase64 + "\nAAAA\n", armor.ErrInvalidHeader},
 	}
 
 	for name, tt := range tests {
@@ -205,7 +205,7 @@ func TestReaderErrors(t *testing.T) {
 	}
 
 	t.Run("invalid characters", func(t *testing.T) {
-		text := armor.Header + "\n" + armor.FormatHex + "\n\nzz\n" + armor.Footer + "\n"
+		text := armor.Message.Header() + "\n" + armor.FormatHex + "\n\nzz\n" + armor.Message.Footer() + "\n"
 		if _, err := decode(text); err == nil {
 			t.Fatal("expected an error for a non-hex body")
 		}
@@ -213,7 +213,7 @@ func TestReaderErrors(t *testing.T) {
 }
 
 func TestNewWriterRejectsNone(t *testing.T) {
-	if _, err := armor.NewWriter(io.Discard, armor.None); !errors.Is(err, armor.ErrUnknownEncoding) {
+	if _, err := armor.NewWriter(io.Discard, armor.Message, armor.None); !errors.Is(err, armor.ErrUnknownEncoding) {
 		t.Fatalf("error = %v, want %v", err, armor.ErrUnknownEncoding)
 	}
 }
@@ -261,5 +261,28 @@ func TestIsArmored(t *testing.T) {
 				t.Fatalf("IsArmored consumed the stream")
 			}
 		})
+	}
+}
+
+// a key must not be read as a message, nor a public key as a private one
+func TestReaderRejectsOtherLabel(t *testing.T) {
+	var out bytes.Buffer
+	w, err := armor.NewWriter(&out, armor.PublicKey, armor.Base64)
+	if err != nil {
+		t.Fatalf("NewWriter has failed: %v", err)
+	}
+	w.Write([]byte("key"))
+	w.Close()
+
+	for _, label := range []armor.Label{armor.Message, armor.PrivateKey} {
+		br := bufio.NewReader(strings.NewReader(out.String()))
+		if _, err := armor.NewReader(br, label); !errors.Is(err, armor.ErrInvalidHeader) {
+			t.Fatalf("NewReader(%q) error = %v, want %v", label, err, armor.ErrInvalidHeader)
+		}
+	}
+
+	br := bufio.NewReader(strings.NewReader(out.String()))
+	if _, err := armor.NewReader(br, armor.PublicKey); err != nil {
+		t.Fatalf("NewReader(%q) has failed: %v", armor.PublicKey, err)
 	}
 }
