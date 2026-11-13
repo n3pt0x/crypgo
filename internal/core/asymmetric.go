@@ -8,7 +8,6 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
-	"github.com/n3pt0x/crypgo/internal/password"
 )
 
 const fileKeyInfo = "crypgo v1 file key"
@@ -34,7 +33,7 @@ func EncryptAsymmetric(r io.Reader, w io.Writer, recipient *ecdh.PublicKey, algo
 	if err != nil {
 		return err
 	}
-	defer password.ZeroBytes(shared)
+	defer encryption.ZeroBytes(shared)
 
 	ephPub := eph.PublicKey().Bytes()
 
@@ -42,7 +41,7 @@ func EncryptAsymmetric(r io.Reader, w io.Writer, recipient *ecdh.PublicKey, algo
 	if err != nil {
 		return err
 	}
-	defer password.ZeroBytes(fileKey)
+	defer encryption.ZeroBytes(fileKey)
 
 	header := format.HeaderAsymmetric{
 		Magic:           format.MagicBytes,
@@ -103,13 +102,13 @@ func DecryptAsymmetric(header format.HeaderAsymmetric, r io.Reader, w io.Writer,
 	if err != nil {
 		return err
 	}
-	defer password.ZeroBytes(shared)
+	defer encryption.ZeroBytes(shared)
 
 	fileKey, err := deriveFileKey(shared, header.EphemeralPublic[:], priv.PublicKey().Bytes())
 	if err != nil {
 		return err
 	}
-	defer password.ZeroBytes(fileKey)
+	defer encryption.ZeroBytes(fileKey)
 
 	aead, err := newAEAD(header.EncryptionAlgo, fileKey)
 	if err != nil {

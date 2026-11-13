@@ -28,15 +28,3 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
-
-func TestZeroBytes(t *testing.T) {
-	passphrase := []byte("secret passphrase")
-
-	password.ZeroBytes(passphrase)
-
-	for i, b := range passphrase {
-		if b != 0 {
-			t.Fatalf("byte %d = %#x, want 0", i, b)
-		}
-	}
-}

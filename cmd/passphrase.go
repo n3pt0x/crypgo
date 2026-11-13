@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"runtime"
 
+	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/password"
 	"golang.org/x/term"
 )
@@ -92,7 +93,7 @@ func readPassphrase(prompt string, confirm bool) ([]byte, error) {
 	}
 
 	if err := password.Validate(passphrase); err != nil {
-		password.ZeroBytes(passphrase)
+		encryption.ZeroBytes(passphrase)
 		return nil, err
 	}
 
@@ -100,14 +101,14 @@ func readPassphrase(prompt string, confirm bool) ([]byte, error) {
 	check, err := readPassword(fd)
 	fmt.Fprintln(os.Stderr)
 
-	defer password.ZeroBytes(check)
+	defer encryption.ZeroBytes(check)
 	if err != nil {
-		password.ZeroBytes(passphrase)
+		encryption.ZeroBytes(passphrase)
 		return nil, err
 	}
 
 	if subtle.ConstantTimeCompare(passphrase, check) != 1 {
-		password.ZeroBytes(passphrase)
+		encryption.ZeroBytes(passphrase)
 		return nil, password.ErrMismatch
 	}
 

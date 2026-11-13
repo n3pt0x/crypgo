@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/n3pt0x/crypgo/internal/core"
-	"github.com/n3pt0x/crypgo/internal/password"
+	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +36,7 @@ var verifyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer password.ZeroBytes(passphrase)
+		defer encryption.ZeroBytes(passphrase)
 
 		for key, in := range ins {
 			if err := core.VerifySymmetric(headers[key], in, passphrase, verifyWorkers); err != nil {

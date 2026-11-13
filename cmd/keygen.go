@@ -7,8 +7,8 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
+	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/fileio"
-	"github.com/n3pt0x/crypgo/internal/password"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +47,7 @@ var keygenCmd = &cobra.Command{
 		}
 
 		passphrase, err := readPassphrase(promptNewPassphrase, true)
-		defer password.ZeroBytes(passphrase)
+		defer encryption.ZeroBytes(passphrase)
 		if err != nil {
 			return err
 		}
@@ -81,8 +81,7 @@ func init() {
 	rootCmd.AddCommand(keygenCmd)
 }
 
-// writeKey writes key armored with label to path, atomically, with the
-// permissions perm.
+// writeKey writes key armored with label to path, atomically, with the permissions perm.
 func writeKey(path string, label armor.Label, key io.WriterTo, perm os.FileMode) error {
 	w, err := fileio.NewAtomicWriter(path)
 	if err != nil {

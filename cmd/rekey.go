@@ -6,8 +6,8 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
+	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
-	"github.com/n3pt0x/crypgo/internal/password"
 	"github.com/spf13/cobra"
 )
 
@@ -63,13 +63,13 @@ var rekeyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer password.ZeroBytes(oldPassphrase)
+		defer encryption.ZeroBytes(oldPassphrase)
 
 		newPassphrase, err := readPassphrase(promptNewPassphrase, true)
 		if err != nil {
 			return err
 		}
-		defer password.ZeroBytes(newPassphrase)
+		defer encryption.ZeroBytes(newPassphrase)
 
 		for key, in := range ins {
 			fileAlgo := algo

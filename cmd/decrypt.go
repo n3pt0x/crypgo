@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/core"
+	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
-	"github.com/n3pt0x/crypgo/internal/password"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,7 @@ var decryptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer password.ZeroBytes(passphrase)
+		defer encryption.ZeroBytes(passphrase)
 
 		for key, in := range ins {
 			if err := decrypt(in, passphrase, headers[key], dests[key], opts.workers); err != nil {

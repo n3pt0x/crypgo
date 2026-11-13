@@ -5,7 +5,6 @@ import (
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
-	"github.com/n3pt0x/crypgo/internal/password"
 )
 
 // GenerateKeyPair creates an X25519 key pair. The private key is encrypted with
@@ -40,7 +39,7 @@ func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format
 	}
 
 	derivedKey := encryption.DerivedKeyArgon2IDWithParams(passphrase, privKey.Header.Salt[:], argon2Params)
-	defer password.ZeroBytes(derivedKey)
+	defer encryption.ZeroBytes(derivedKey)
 
 	aead, err := encryption.NewXChaCha20Poly1305(derivedKey)
 	if err != nil {
@@ -49,7 +48,7 @@ func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format
 
 	// Bytes returns a copy of the private key, zeroed once sealed
 	plain := key.Bytes()
-	defer password.ZeroBytes(plain)
+	defer encryption.ZeroBytes(plain)
 
 	aead.Seal(privKey.Wrapped[:0], privKey.Header.Nonce[:], plain, privKey.Header.Bytes())
 
@@ -78,7 +77,7 @@ func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (*ecdh.PrivateKey,
 	}
 
 	derivedKey := encryption.DerivedKeyArgon2IDWithParams(passphrase, key.Header.Salt[:], argon2Params)
-	defer password.ZeroBytes(derivedKey)
+	defer encryption.ZeroBytes(derivedKey)
 
 	aead, err := encryption.NewXChaCha20Poly1305(derivedKey)
 	if err != nil {
@@ -90,7 +89,7 @@ func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (*ecdh.PrivateKey,
 		return nil, encryption.ErrWrongKeyPassphrase
 	}
 
-	defer password.ZeroBytes(plain)
+	defer encryption.ZeroBytes(plain)
 
 	return encryption.ParseX25519Private(plain)
 }
