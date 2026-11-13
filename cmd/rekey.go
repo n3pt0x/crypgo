@@ -58,6 +58,13 @@ var rekeyCmd = &cobra.Command{
 			return err
 		}
 
+		// a file encrypted with a public key has no passphrase to change
+		for key, h := range headers {
+			if h.mode != format.Symmetric {
+				return fmt.Errorf("%s: %w", ins[key].file.Name(), ErrRekeyAsymmetric)
+			}
+		}
+
 		// passphrases
 		oldPassphrase, err := readPassphrase(promptPassphrase, false)
 		if err != nil {
@@ -74,10 +81,10 @@ var rekeyCmd = &cobra.Command{
 		for key, in := range ins {
 			fileAlgo := algo
 			if rekeyAlgo == "" {
-				fileAlgo = headers[key].EncryptionAlgo
+				fileAlgo = headers[key].sym.EncryptionAlgo
 			}
 
-			if err := rekey(in, headers[key], oldPassphrase, newPassphrase, fileAlgo, profile, enc, rekeyWorkers); err != nil {
+			if err := rekey(in, headers[key].sym, oldPassphrase, newPassphrase, fileAlgo, profile, enc, rekeyWorkers); err != nil {
 				return fmt.Errorf("%s: %w", in.file.Name(), err)
 			}
 

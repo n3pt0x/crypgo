@@ -62,7 +62,7 @@ var decryptCmd = &cobra.Command{
 		defer encryption.ZeroBytes(passphrase)
 
 		for key, in := range ins {
-			if err := decrypt(in, passphrase, headers[key], dests[key], opts.workers); err != nil {
+			if err := decrypt(in, passphrase, headers[key].sym, dests[key], opts.workers); err != nil {
 				return err
 			}
 

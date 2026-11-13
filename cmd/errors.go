@@ -27,5 +27,11 @@ var (
 	ErrDeleteNeedsOutput = errors.New("--delete needs an input file and --output <file>")
 	ErrDeleteSameFile    = errors.New("--delete: output and input are the same file")
 
-	ErrRekeyStdin = errors.New("rekey needs file arguments: it rewrites the files in place")
+	ErrRekeyStdin      = errors.New("rekey needs file arguments: it rewrites the files in place")
+	ErrRekeyAsymmetric = errors.New("rekey only applies to files encrypted with a passphrase, not with a public key")
+
+	ErrMixedModes            = errors.New("files encrypted with a passphrase and with a public key can't be processed together")
+	ErrKeyNeeded             = errors.New("file encrypted with a public key: give the private key with --key")
+	ErrKeyWithSymmetric      = errors.New("--key is only for files encrypted with a public key")
+	ErrParanoidWithRecipient = errors.New("--paranoid can't be used with --recipient: no passphrase protects the file")
 )

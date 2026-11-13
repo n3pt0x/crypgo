@@ -39,7 +39,7 @@ var verifyCmd = &cobra.Command{
 		defer encryption.ZeroBytes(passphrase)
 
 		for key, in := range ins {
-			if err := core.VerifySymmetric(headers[key], in, passphrase, verifyWorkers); err != nil {
+			if err := core.VerifySymmetric(headers[key].sym, in, passphrase, verifyWorkers); err != nil {
 				return err
 			}
 

@@ -99,10 +99,17 @@ func (in *input) unarmor() error {
 	return nil
 }
 
+// fileHeader is the header of one input. mode tells which of sym and asym was read
+type fileHeader struct {
+	mode uint8 // format.Symmetric or format.Asymmetric
+	sym  format.HeaderSymmetric
+	asym format.HeaderAsymmetric
+}
+
 // readHeaders reads the header of every input, decoding the armored ones first.
 // It is done before asking for the passphrase, so an invalid file is refused early.
-func readHeaders(ins []*input) ([]format.HeaderSymmetric, error) {
-	headers := make([]format.HeaderSymmetric, 0, len(ins))
+func readHeaders(ins []*input) ([]fileHeader, error) {
+	headers := make([]fileHeader, 0, len(ins))
 
 	for _, in := range ins {
 		// check armor
@@ -110,7 +117,7 @@ func readHeaders(ins []*input) ([]format.HeaderSymmetric, error) {
 			return nil, err
 		}
 
-		header, err := core.ReadHeaderSymmetric(in)
+		header, err := readHeader(in)
 		if err != nil {
 			if errors.Is(err, format.ErrInvalidMagic) && in.file != nil {
 				// err + filename
@@ -122,6 +129,45 @@ func readHeaders(ins []*input) ([]format.HeaderSymmetric, error) {
 	}
 
 	return headers, nil
+}
+
+// readHeader reads the header announced by the mode at the start of in.
+// PeekMode does not consume anything, so the header is read from its first byte.
+func readHeader(in *input) (fileHeader, error) {
+	mode, err := format.PeekMode(in.Reader)
+	if err != nil {
+		return fileHeader{}, err
+	}
+
+	header := fileHeader{mode: mode}
+
+	switch mode {
+	case format.Symmetric:
+		header.sym, err = core.ReadHeaderSymmetric(in)
+	case format.Asymmetric:
+		header.asym, err = core.ReadHeaderAsymmetric(in)
+	default:
+		err = format.ErrInvalidMode
+	}
+
+	return header, err
+}
+
+// commonMode is the mode shared by every header. Files encrypted with a
+// passphrase and with a public key cannot be processed together.
+func commonMode(headers []fileHeader) (uint8, error) {
+	if len(headers) == 0 {
+		return 0, ErrNoInput
+	}
+
+	mode := headers[0].mode
+	for _, h := range headers[1:] {
+		if h.mode != mode {
+			return 0, ErrMixedModes
+		}
+	}
+
+	return mode, nil
 }
 
 // peek makes sure the input is not empty.

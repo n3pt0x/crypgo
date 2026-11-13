@@ -15,6 +15,7 @@ import (
 const (
 	promptPassphrase    = "Passphrase: "
 	promptNewPassphrase = "New passphrase: "
+	promptKeyPassphrase = "Private key passphrase: "
 )
 
 func isTerminal(f *os.File) bool {

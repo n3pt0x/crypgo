@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/ecdh"
 	"fmt"
 	"io"
 
@@ -11,10 +12,11 @@ import (
 )
 
 var (
-	encryptOpts     ioOptions
-	encryptAlgo     string
-	encryptParanoid bool
-	encryptArmor    string
+	encryptOpts      ioOptions
+	encryptAlgo      string
+	encryptRecipient string
+	encryptParanoid  bool
+	encryptArmor     string
 )
 
 var encryptCmd = &cobra.Command{
@@ -22,6 +24,10 @@ var encryptCmd = &cobra.Command{
 	Short: "Encrypt files (or stdin) with a passphrase",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if encryptRecipient != "" && encryptParanoid {
+			return ErrParanoidWithRecipient
+		}
+
 		algo, err := parseAlgo(encryptAlgo)
 		if err != nil {
 			return err
@@ -65,15 +71,30 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		// passphrase
-		passphrase, err := readPassphrase(promptPassphrase, true)
-		if err != nil {
-			return err
+		var seal sealFunc
+		coreOpts := core.Options{
+			Workers: opts.workers,
 		}
-		defer encryption.ZeroBytes(passphrase)
+
+		if encryptRecipient != "" {
+			recipient, err := readPublicKey(encryptRecipient)
+			if err != nil {
+				return err
+			}
+
+			seal = asymmetricSeal(recipient, algo, coreOpts)
+		} else {
+			passphrase, err := readPassphrase(promptPassphrase, true)
+			if err != nil {
+				return err
+			}
+			defer encryption.ZeroBytes(passphrase)
+
+			seal = symmetricSeal(passphrase, algo, profile, coreOpts)
+		}
 
 		for key, in := range ins {
-			if err := encrypt(in, dests[key], passphrase, algo, profile, enc, opts.workers); err != nil {
+			if err := encrypt(in, dests[key], enc, seal); err != nil {
 				return err
 			}
 
@@ -98,6 +119,7 @@ func init() {
 		"output file, \"-\" for stdout (default: <file>.crypgo, or stdout when reading stdin)",
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
+	encryptCmd.Flags().StringVarP(&encryptRecipient, "recipient", "r", "", "specify recipient key")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
 	bindArmor(encryptCmd, &encryptArmor, "write text instead of binary: --armor (base64) | --armor=hex (decrypt detects it)")
 	rootCmd.AddCommand(encryptCmd)
@@ -118,7 +140,32 @@ func encryptDefaultPath(args []string, extension string) []string {
 	return out
 }
 
-func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, profile uint8, enc armor.Encoding, workers int) error {
+type sealFunc func(r io.Reader, w io.Writer) error
+
+// symmetricSeal encrypts with a key derived from passphrase
+func symmetricSeal(passphrase []byte, algo, profile uint8, opts core.Options) sealFunc {
+	return func(r io.Reader, w io.Writer) error {
+		if err := core.EncryptSymmetric(r, w, passphrase, algo, profile, opts); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
+
+// asymmetricSeal encrypts for the owner of the private key matching recipient
+func asymmetricSeal(recipient *ecdh.PublicKey, algo uint8, opts core.Options) sealFunc {
+	return func(r io.Reader, w io.Writer) error {
+		if err := core.EncryptAsymmetric(r, w, recipient, algo, opts); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
+
+// encrypt writes the input sealed by seal to dest, armored if enc asks for it.
+func encrypt(in io.Reader, dest destination, enc armor.Encoding, seal sealFunc) error {
 	out, err := dest.create()
 	if err != nil {
 		return err
@@ -130,7 +177,7 @@ func encrypt(in io.Reader, dest destination, passphrase []byte, algo uint8, prof
 		return err
 	}
 
-	if err := core.EncryptSymmetric(in, w, passphrase, algo, profile, core.Options{Workers: workers}); err != nil {
+	if err := seal(in, w); err != nil {
 		return err
 	}
 
