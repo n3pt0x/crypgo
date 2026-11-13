@@ -65,7 +65,7 @@ func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, p
 		return err
 	}
 
-	return sealStream(aead, header, r, w, max(opts.Workers, 1))
+	return sealStream(aead, symmetricStream(header), r, w, max(opts.Workers, 1))
 }
 
 func ReadHeaderSymmetric(r io.Reader) (format.HeaderSymmetric, error) {
@@ -92,7 +92,7 @@ func DecryptSymmetric(header format.HeaderSymmetric, r io.Reader, w io.Writer, p
 		return err
 	}
 
-	return openStream(aead, header, r, w, max(workers, 1))
+	return openStream(aead, symmetricStream(header), r, w, max(workers, 1))
 }
 
 func VerifySymmetric(header format.HeaderSymmetric, r io.Reader, passphrase []byte, workers int) error {
