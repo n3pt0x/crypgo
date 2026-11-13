@@ -93,3 +93,11 @@ func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (*ecdh.PrivateKey,
 
 	return encryption.ParseX25519Private(plain)
 }
+
+func OpenPublicKey(key format.PublicKey) (*ecdh.PublicKey, error) {
+	if err := key.IsValid(); err != nil {
+		return nil, err
+	}
+
+	return encryption.ParseX25519Public(key.Public[:])
+}

@@ -72,3 +72,14 @@ func TestOpenPrivateKeyErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenPublicKey(t *testing.T) {
+	pub, _, err := core.GenerateKeyPair(testPassphrase, encryption.KDFProfileArgon2idDefault)
+	if err != nil {
+		t.Fatalf("GenerateKeyPair has failed: %v", err)
+	}
+
+	if _, err = core.OpenPublicKey(pub); err != nil {
+		t.Fatalf("OpenPublicKey = %v", err)
+	}
+}
