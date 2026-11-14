@@ -119,7 +119,7 @@ func init() {
 		"output file, \"-\" for stdout (default: <file>.crypgo, or stdout when reading stdin)",
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
-	encryptCmd.Flags().StringVarP(&encryptRecipient, "recipient", "r", "", "specify recipient key")
+	encryptCmd.Flags().StringVarP(&encryptRecipient, "recipient", "r", "", "recipient public key (asymmetric)")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
 	bindArmor(encryptCmd, &encryptArmor, "write text instead of binary: --armor (base64) | --armor=hex (decrypt detects it)")
 	rootCmd.AddCommand(encryptCmd)

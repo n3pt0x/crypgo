@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"crypto/ecdh"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -10,7 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var decryptOpts ioOptions
+var (
+	decryptOpts ioOptions
+	decryptKey  string
+)
 
 var decryptCmd = &cobra.Command{
 	Use:   "decrypt [file...]",
@@ -54,15 +59,55 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
-		// passphrase
-		passphrase, err := readPassphrase(promptPassphrase, false)
+		// the files decide the mode
+		mode, err := commonMode(headers)
 		if err != nil {
 			return err
 		}
-		defer encryption.ZeroBytes(passphrase)
+
+		var (
+			passphrase []byte
+			privateKey *ecdh.PrivateKey
+			open       openFunc
+		)
+
+		// check mode
+		switch mode {
+		case format.Symmetric:
+			if decryptKey != "" {
+				return ErrKeyWithSymmetric
+			}
+
+			passphrase, err = readPassphrase(promptPassphrase, false)
+			if err != nil {
+				return err
+			}
+			defer encryption.ZeroBytes(passphrase)
+
+			open = symmetricOpen(passphrase, decryptOpts.workers)
+
+		case format.Asymmetric:
+			if decryptKey == "" {
+				return ErrKeyNeeded
+			}
+
+			keyPassphrase, err := readPassphrase(promptKeyPassphrase, false)
+			if err != nil {
+				return err
+			}
+			defer encryption.ZeroBytes(keyPassphrase)
+
+			privateKey, err = unlock(decryptKey, keyPassphrase)
+			if err != nil {
+				return err
+			}
+
+			open = asymmetricOpen(privateKey, decryptOpts.workers)
+		}
 
 		for key, in := range ins {
-			if err := decrypt(in, passphrase, headers[key].sym, dests[key], opts.workers); err != nil {
+
+			if err := decrypt(in, headers[key], dests[key], open); err != nil {
 				return err
 			}
 
@@ -86,6 +131,7 @@ func init() {
 	decryptOpts.bind(decryptCmd,
 		"output file, \"-\" for stdout (default: <file> without .crypgo, or stdout when reading stdin)",
 		"chunks decrypted in parallel")
+	decryptCmd.Flags().StringVarP(&decryptKey, "key", "k", "", "private key (asymmetric)")
 	rootCmd.AddCommand(decryptCmd)
 }
 
@@ -104,14 +150,38 @@ func decryptDefaultPath(args []string, extension string) []string {
 	return out
 }
 
-func decrypt(in *input, passphrase []byte, header format.HeaderSymmetric, dest destination, workers int) error {
+type openFunc func(h fileHeader, r io.Reader, w io.Writer) error
+
+// symmetricOpen encrypts with a key derived from passphrase
+func symmetricOpen(passphrase []byte, workers int) openFunc {
+	return func(h fileHeader, r io.Reader, w io.Writer) error {
+		if err := core.DecryptSymmetric(h.sym, r, w, passphrase, workers); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
+
+// asymmetricOpen encrypts for the owner of the private key matching recipient
+func asymmetricOpen(priv *ecdh.PrivateKey, workers int) openFunc {
+	return func(h fileHeader, r io.Reader, w io.Writer) error {
+		if err := core.DecryptAsymmetric(h.asym, r, w, priv, workers); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
+
+func decrypt(in *input, header fileHeader, dest destination, open openFunc) error {
 	out, err := dest.create()
 	if err != nil {
 		return err
 	}
 	defer out.Abort() // does nothing once committed
 
-	if err := core.DecryptSymmetric(header, in, out, passphrase, workers); err != nil {
+	if err := open(header, in, out); err != nil {
 		return err
 	}
 

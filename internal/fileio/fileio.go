@@ -106,7 +106,7 @@ func (a *AtomicWriter) abort() {
 func OpenFile(path string) (*os.File, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("%s: %w", path, ErrFileNotFound)
+		return nil, fmt.Errorf("%s %w", path, ErrFileNotFound)
 	}
 	return f, err
 }
