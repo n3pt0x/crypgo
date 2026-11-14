@@ -88,7 +88,9 @@ var verifyCmd = &cobra.Command{
 				return err
 			}
 
-			fmt.Fprintf(cmd.ErrOrStderr(), "[+] File : %s, has been verified with success\n", in.file.Name())
+			if in.file != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] File : %s, has been verified with success\n", in.file.Name())
+			}
 		}
 
 		return nil
