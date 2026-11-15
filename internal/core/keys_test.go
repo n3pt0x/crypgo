@@ -38,6 +38,43 @@ func TestGenerateKeyPairUnknownProfile(t *testing.T) {
 	}
 }
 
+// a key sealed again under a new passphrase is the same key, and only the new
+// passphrase opens it
+func TestSealPrivateKeyNewPassphrase(t *testing.T) {
+	pub, priv, err := core.GenerateKeyPair(testPassphrase, encryption.KDFProfileArgon2idDefault)
+	if err != nil {
+		t.Fatalf("GenerateKeyPair has failed: %v", err)
+	}
+
+	key, err := core.OpenPrivateKey(priv, testPassphrase)
+	if err != nil {
+		t.Fatalf("OpenPrivateKey has failed: %v", err)
+	}
+
+	newPassphrase := []byte("another long passphrase")
+	resealed, err := core.SealPrivateKey(key, newPassphrase, encryption.KDFProfileArgon2idDefault)
+	if err != nil {
+		t.Fatalf("SealPrivateKey has failed: %v", err)
+	}
+
+	if resealed.Header.Salt == priv.Header.Salt || resealed.Header.Nonce == priv.Header.Nonce {
+		t.Fatal("salt or nonce reused by SealPrivateKey")
+	}
+
+	if _, err := core.OpenPrivateKey(resealed, testPassphrase); !errors.Is(err, encryption.ErrWrongKeyPassphrase) {
+		t.Fatalf("OpenPrivateKey(old passphrase) = %v, want %v", err, encryption.ErrWrongKeyPassphrase)
+	}
+
+	opened, err := core.OpenPrivateKey(resealed, newPassphrase)
+	if err != nil {
+		t.Fatalf("OpenPrivateKey(new passphrase) has failed: %v", err)
+	}
+
+	if !bytes.Equal(opened.PublicKey().Bytes(), pub.Public[:]) {
+		t.Fatal("resealed key differs from the original key")
+	}
+}
+
 func TestOpenPrivateKeyErrors(t *testing.T) {
 	_, priv, err := core.GenerateKeyPair(testPassphrase, encryption.KDFProfileArgon2idDefault)
 	if err != nil {

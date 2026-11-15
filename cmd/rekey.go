@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/ecdh"
 	"fmt"
 	"path/filepath"
 
@@ -20,7 +21,7 @@ var (
 
 var rekeyCmd = &cobra.Command{
 	Use:   "rekey [file...]",
-	Short: "Change the passphrase of files, in place (they must share the same passphrase)",
+	Short: "Change the passphrase of encrypted files or private key files, in place (they must share the same passphrase)",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkWorkers(rekeyWorkers); err != nil {
@@ -52,6 +53,20 @@ var rekeyCmd = &cobra.Command{
 			return err
 		}
 		defer closeInputs(ins)
+
+		isKeys, err := privateKeyInputs(ins)
+		if err != nil {
+			return err
+		}
+
+		if isKeys {
+			for _, name := range []string{"algo", "armor", "workers"} {
+				if cmd.Flags().Changed(name) {
+					return ErrRekeyKeyFlags
+				}
+			}
+			return rekeyPrivateKeys(cmd, ins, profile)
+		}
 
 		headers, err := readHeaders(ins)
 		if err != nil {
@@ -141,4 +156,94 @@ func rekey(in *input, header format.HeaderSymmetric, oldPassphrase, newPassphras
 
 	in.Close() // an open file cannot be replaced on Windows
 	return out.Commit()
+}
+
+// privateKeyInputs reports whether the inputs are private key files rather than encrypted files
+func privateKeyInputs(ins []*input) (bool, error) {
+	keys := 0
+	for _, in := range ins {
+		if armor.HasLabel(in.Reader, armor.PrivateKey) {
+			keys++
+		}
+	}
+
+	switch keys {
+	case 0:
+		return false, nil
+	case len(ins):
+		return true, nil
+	}
+	return false, ErrRekeyMixed
+}
+
+// rekeyPrivateKeys changes the passphrase of private key files, in place
+func rekeyPrivateKeys(cmd *cobra.Command, ins []*input, profile uint8) error {
+	// every key is read and checked before asking for the passphrases
+	keys := make([]format.PrivateKey, 0, len(ins))
+	for _, in := range ins {
+		key, err := readPrivateKeyInput(in)
+		if err != nil {
+			return err
+		}
+		keys = append(keys, key)
+	}
+
+	oldPassphrase, err := readPassphrase(promptKeyPassphrase, false)
+	if err != nil {
+		return err
+	}
+	defer encryption.ZeroBytes(oldPassphrase)
+
+	// opened before asking for the new passphrase: a wrong one fails at once
+	privs := make([]*ecdh.PrivateKey, 0, len(keys))
+	for i, key := range keys {
+		priv, err := core.OpenPrivateKey(key, oldPassphrase)
+		if err != nil {
+			return ins[i].wrap(err)
+		}
+		privs = append(privs, priv)
+	}
+
+	newPassphrase, err := readPassphrase(promptNewPassphrase, true)
+	if err != nil {
+		return err
+	}
+	defer encryption.ZeroBytes(newPassphrase)
+
+	for i, in := range ins {
+		sealed, err := core.SealPrivateKey(privs[i], newPassphrase, profile)
+		if err != nil {
+			return in.wrap(err)
+		}
+
+		if err := replacePrivateKey(in, sealed); err != nil {
+			return in.wrap(err)
+		}
+
+		fmt.Fprintf(cmd.ErrOrStderr(), "[+] Rekeyed private key : %s\n", in.file.Name())
+	}
+
+	return nil
+}
+
+// replacePrivateKey writes key over the file of in, atomically, with the same permissions.
+func replacePrivateKey(in *input, key format.PrivateKey) error {
+	path, err := filepath.EvalSymlinks(in.file.Name())
+	if err != nil {
+		return err
+	}
+
+	info, err := in.file.Stat()
+	if err != nil {
+		return err
+	}
+
+	w, err := writeKey(path, armor.PrivateKey, key, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	defer w.Abort() // does nothing once committed
+
+	in.Close() // an open file cannot be replaced on Windows
+	return w.Commit()
 }

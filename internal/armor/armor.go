@@ -204,6 +204,16 @@ func IsArmored(br *bufio.Reader) bool {
 	return len(p) == skip+len(dashes) && string(p[skip:]) == dashes
 }
 
+// HasLabel reports whether the stream starts with the armor header of label,
+// without consuming anything. Leading blanks are accepted as by IsArmored.
+func HasLabel(br *bufio.Reader, label Label) bool {
+	skip := leadingBlank(br)
+	header := label.Header()
+
+	p, _ := br.Peek(skip + len(header))
+	return len(p) == skip+len(header) && string(p[skip:]) == header
+}
+
 // leadingBlank is the number of bytes to skip before the header: a byte order
 // mark, then white space.
 func leadingBlank(br *bufio.Reader) int {

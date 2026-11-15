@@ -29,7 +29,9 @@ var (
 	ErrDeleteSameFile   = errors.New("--delete: output and input are the same file")
 
 	ErrRekeyStdin      = errors.New("rekey needs file arguments: it rewrites the files in place")
-	ErrRekeyAsymmetric = errors.New("rekey only applies to files encrypted with a passphrase, not with a public key")
+	ErrRekeyAsymmetric = errors.New("rekey only applies to files encrypted with a passphrase, not with a public key (rekey the .key file to change its passphrase)")
+	ErrRekeyMixed      = errors.New("rekey can't mix private key files and encrypted files")
+	ErrRekeyKeyFlags   = errors.New("--algo, --armor and --workers don't apply to private key files")
 
 	ErrMixedModes            = errors.New("files encrypted with a passphrase and with a public key can't be processed together")
 	ErrKeyNeeded             = errors.New("file encrypted with a public key: give the private key with --key")

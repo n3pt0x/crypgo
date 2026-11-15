@@ -267,6 +267,35 @@ func TestIsArmored(t *testing.T) {
 	}
 }
 
+func TestHasLabel(t *testing.T) {
+	var out bytes.Buffer
+	w, err := armor.NewWriter(&out, armor.PrivateKey, armor.Base64)
+	if err != nil {
+		t.Fatalf("NewWriter has failed: %v", err)
+	}
+	w.Write([]byte("key"))
+	w.Close()
+	text := "\xef\xbb\xbf\n  " + out.String()
+
+	tests := map[armor.Label]bool{
+		armor.PrivateKey: true,
+		armor.PublicKey:  false,
+		armor.Message:    false,
+	}
+
+	for label, want := range tests {
+		br := bufio.NewReader(strings.NewReader(text))
+		if got := armor.HasLabel(br, label); got != want {
+			t.Fatalf("HasLabel(%q) = %v, want %v", label, got, want)
+		}
+
+		// peeking must not consume anything
+		if rest, _ := io.ReadAll(br); string(rest) != text {
+			t.Fatalf("HasLabel(%q) consumed the stream", label)
+		}
+	}
+}
+
 // a key must not be read as a message, nor a public key as a private one
 func TestReaderRejectsOtherLabel(t *testing.T) {
 	var out bytes.Buffer
