@@ -36,7 +36,6 @@ type Argon2Params struct {
 }
 
 var (
-	ErrEncryptionFailed   = errors.New("encryption failed")
 	ErrDecryptionFailed   = errors.New("wrong passphrase or corrupted file")
 	ErrUnknownKDFProfile  = errors.New("unknown KDF profile")
 	ErrWrongIdentity      = errors.New("not encrypted for this private key, or corrupted file")

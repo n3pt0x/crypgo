@@ -1,12 +1,9 @@
 package cmd
 
 import (
-	"crypto/ecdh"
 	"fmt"
+	"io"
 
-	"github.com/n3pt0x/crypgo/internal/core"
-	"github.com/n3pt0x/crypgo/internal/encryption"
-	"github.com/n3pt0x/crypgo/internal/format"
 	"github.com/spf13/cobra"
 )
 
@@ -42,55 +39,16 @@ var verifyCmd = &cobra.Command{
 			return err
 		}
 
-		var (
-			passphrase []byte
-			privateKey *ecdh.PrivateKey
-		)
-
-		// check mode
-		switch mode {
-		case format.Symmetric:
-			if verifyKeyPath != "" {
-				return ErrKeyWithSymmetric
-			}
-
-			passphrase, err = readPassphrase(promptPassphrase, false)
-			if err != nil {
-				return err
-			}
-			defer encryption.ZeroBytes(passphrase)
-
-		case format.Asymmetric:
-			if verifyKeyPath == "" {
-				return ErrKeyNeeded
-			}
-
-			key, err := readPrivateKey(verifyKeyPath)
-			if err != nil {
-				return err
-			}
-
-			passphrase, err = readPassphrase(promptKeyPassphrase, false)
-			if err != nil {
-				return err
-			}
-			defer encryption.ZeroBytes(passphrase)
-
-			privateKey, err = core.OpenPrivateKey(key, passphrase)
-			if err != nil {
-				return err
-			}
+		open, wipe, err := newOpener(mode, verifyKeyPath, verifyWorkers)
+		if err != nil {
+			return err
 		}
+		defer wipe()
 
+		// decrypt without writing anything: every chunk is still authenticated
 		for key, in := range ins {
-			if mode == format.Asymmetric {
-				err = core.VerifyAsymmetric(headers[key].asym, in, privateKey, verifyWorkers)
-			} else {
-				err = core.VerifySymmetric(headers[key].sym, in, passphrase, verifyWorkers)
-			}
-
-			if err != nil {
-				return err
+			if err := open(headers[key], in, io.Discard); err != nil {
+				return in.wrap(err)
 			}
 
 			if in.file != nil {

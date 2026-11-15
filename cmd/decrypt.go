@@ -74,55 +74,15 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
-		var (
-			passphrase []byte
-			privateKey *ecdh.PrivateKey
-			open       openFunc
-		)
-
-		// check mode
-		switch mode {
-		case format.Symmetric:
-			if decryptKeyPath != "" {
-				return ErrKeyWithSymmetric
-			}
-
-			passphrase, err = readPassphrase(promptPassphrase, false)
-			if err != nil {
-				return err
-			}
-			defer encryption.ZeroBytes(passphrase)
-
-			open = symmetricOpen(passphrase, decryptOpts.workers)
-
-		case format.Asymmetric:
-			if decryptKeyPath == "" {
-				return ErrKeyNeeded
-			}
-
-			key, err := readPrivateKey(decryptKeyPath)
-			if err != nil {
-				return err
-			}
-
-			passphrase, err = readPassphrase(promptKeyPassphrase, false)
-			if err != nil {
-				return err
-			}
-			defer encryption.ZeroBytes(passphrase)
-
-			privateKey, err = core.OpenPrivateKey(key, passphrase)
-			if err != nil {
-				return err
-			}
-
-			open = asymmetricOpen(privateKey, decryptOpts.workers)
+		open, wipe, err := newOpener(mode, decryptKeyPath, opts.workers)
+		if err != nil {
+			return err
 		}
+		defer wipe()
 
 		for key, in := range ins {
-
 			if err := decrypt(in, headers[key], dests[key], open); err != nil {
-				return err
+				return in.wrap(err)
 			}
 
 			if dests[key].path != "" {
@@ -173,25 +133,62 @@ func decryptDefaultPath(args []string, extension string) []string {
 
 type openFunc func(h fileHeader, r io.Reader, w io.Writer) error
 
-// symmetricOpen encrypts with a key derived from passphrase
-func symmetricOpen(passphrase []byte, workers int) openFunc {
-	return func(h fileHeader, r io.Reader, w io.Writer) error {
-		if err := core.DecryptSymmetric(h.sym, r, w, passphrase, workers); err != nil {
-			return err
+// newOpener asks for what files of mode need, the passphrase or the private key
+// at keyPath and its passphrase, and returns the function that decrypts them.
+// wipe clears the passphrase once every file is done.
+func newOpener(mode uint8, keyPath string, workers int) (open openFunc, wipe func(), err error) {
+	switch mode {
+	case format.Symmetric:
+		if keyPath != "" {
+			return nil, nil, ErrKeyWithSymmetric
 		}
 
-		return nil
+		passphrase, err := readPassphrase(promptPassphrase, false)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return symmetricOpen(passphrase, workers), func() { encryption.ZeroBytes(passphrase) }, nil
+
+	case format.Asymmetric:
+		if keyPath == "" {
+			return nil, nil, ErrKeyNeeded
+		}
+
+		// read before the prompt: a wrong path fails without typing anything
+		key, err := readPrivateKey(keyPath)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		passphrase, err := readPassphrase(promptKeyPassphrase, false)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer encryption.ZeroBytes(passphrase)
+
+		priv, err := core.OpenPrivateKey(key, passphrase)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return asymmetricOpen(priv, workers), func() {}, nil
+	}
+
+	return nil, nil, format.ErrInvalidMode
+}
+
+// symmetricOpen decrypts with a key derived from passphrase.
+func symmetricOpen(passphrase []byte, workers int) openFunc {
+	return func(h fileHeader, r io.Reader, w io.Writer) error {
+		return core.DecryptSymmetric(h.sym, r, w, passphrase, workers)
 	}
 }
 
-// asymmetricOpen encrypts for the owner of the private key matching recipient
+// asymmetricOpen decrypts files encrypted for the public key of priv.
 func asymmetricOpen(priv *ecdh.PrivateKey, workers int) openFunc {
 	return func(h fileHeader, r io.Reader, w io.Writer) error {
-		if err := core.DecryptAsymmetric(h.asym, r, w, priv, workers); err != nil {
-			return err
-		}
-
-		return nil
+		return core.DecryptAsymmetric(h.asym, r, w, priv, workers)
 	}
 }
 

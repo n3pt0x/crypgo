@@ -48,6 +48,14 @@ func (in *input) Close() error {
 	return in.file.Close()
 }
 
+// wrap prefixes err with the path of the file, to tell which input failed.
+func (in *input) wrap(err error) error {
+	if in.file == nil {
+		return err
+	}
+	return fmt.Errorf("%s: %w", in.file.Name(), err)
+}
+
 // openInput opens the files given as arguments, or stdin when there are none.
 func openInput(args []string) ([]*input, error) {
 	if fromStdin(args) {
@@ -75,7 +83,7 @@ func openInput(args []string) ([]*input, error) {
 
 		if err := in.peek(); err != nil {
 			closeInputs(ins)
-			return nil, fmt.Errorf("%s: %w", arg, err)
+			return nil, in.wrap(err)
 		}
 	}
 
@@ -89,9 +97,6 @@ func (in *input) unarmor() error {
 
 	r, err := armor.NewReader(in.Reader, armor.Message)
 	if err != nil {
-		if in.file != nil {
-			return fmt.Errorf("%s: %w", in.file.Name(), err)
-		}
 		return err
 	}
 
@@ -112,17 +117,13 @@ func readHeaders(ins []*input) ([]fileHeader, error) {
 	headers := make([]fileHeader, 0, len(ins))
 
 	for _, in := range ins {
-		// check armor
 		if err := in.unarmor(); err != nil {
-			return nil, err
+			return nil, in.wrap(err)
 		}
 
 		header, err := readHeader(in)
 		if err != nil {
-			if errors.Is(err, format.ErrInvalidMagic) && in.file != nil {
-				return nil, fmt.Errorf("%s: %w", in.file.Name(), err)
-			}
-			return nil, err
+			return nil, in.wrap(err)
 		}
 		headers = append(headers, header)
 	}

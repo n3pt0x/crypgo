@@ -143,24 +143,3 @@ func TestDecryptSymmetricErrors(t *testing.T) {
 		})
 	}
 }
-
-func TestVerifySymmetric(t *testing.T) {
-	valid := encrypt(t, format.AlgoAESGCM, testMessage, core.Options{})
-
-	verify := func(passphrase []byte) error {
-		r := bytes.NewReader(valid)
-		header, err := core.ReadHeaderSymmetric(r)
-		if err != nil {
-			t.Fatalf("ReadHeaderSymmetric has failed: %v", err)
-		}
-		return core.VerifySymmetric(header, r, passphrase, 1)
-	}
-
-	if err := verify(testPassphrase); err != nil {
-		t.Fatalf("VerifySymmetric(valid) = %v, want nil", err)
-	}
-
-	if err := verify([]byte("wrong passphrase")); !errors.Is(err, encryption.ErrDecryptionFailed) {
-		t.Fatalf("VerifySymmetric(wrong passphrase) = %v, want %v", err, encryption.ErrDecryptionFailed)
-	}
-}

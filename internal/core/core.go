@@ -13,6 +13,13 @@ type Options struct {
 	ChunkSize uint32 // plaintext bytes per chunk, format.DefaultChunkSize when unset
 }
 
+func (o Options) chunkSize() uint32 {
+	if o.ChunkSize == 0 {
+		return format.DefaultChunkSize
+	}
+	return o.ChunkSize
+}
+
 func newAEAD(algo uint8, key []byte) (cipher.AEAD, error) {
 	switch algo {
 	case format.AlgoAESGCM:

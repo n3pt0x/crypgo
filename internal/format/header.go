@@ -64,6 +64,7 @@ type HeaderSymmetric struct {
 	NoncePrefix    [encryption.NoncePrefixSize]byte // AES-GCM uses only the first 3 bytes
 }
 
+// HeaderAsymmetric is the header of a file encrypted with a public key (60 bytes).
 type HeaderAsymmetric struct {
 	Magic           [6]byte
 	Version         uint8
@@ -85,12 +86,12 @@ var (
 	ErrTruncated      = errors.New("file is truncated or not a crypgo file")
 )
 
-func validPrefix(magic [6]byte, version, versionExpected, mode, modeExpected uint8) error {
+func validPrefix(magic [6]byte, version, mode, modeExpected uint8) error {
 	if !bytes.Equal(magic[:], MagicBytes[:]) {
 		return ErrInvalidMagic
 	}
 
-	if version != versionExpected {
+	if version != Version {
 		return ErrUnsupportedVer
 	}
 
@@ -184,7 +185,7 @@ func PeekMode(br *bufio.Reader) (uint8, error) {
 }
 
 func (h HeaderSymmetric) IsValid() error {
-	if err := validPrefix(h.Magic, h.Version, Version, h.Mode, Symmetric); err != nil {
+	if err := validPrefix(h.Magic, h.Version, h.Mode, Symmetric); err != nil {
 		return err
 	}
 
@@ -214,7 +215,7 @@ func (h *HeaderSymmetric) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (h HeaderAsymmetric) IsValid() error {
-	if err := validPrefix(h.Magic, h.Version, Version, h.Mode, Asymmetric); err != nil {
+	if err := validPrefix(h.Magic, h.Version, h.Mode, Asymmetric); err != nil {
 		return err
 	}
 

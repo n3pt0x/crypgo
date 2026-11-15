@@ -141,25 +141,3 @@ func TestDecryptAsymmetricErrors(t *testing.T) {
 		})
 	}
 }
-
-func TestVerifyAsymmetric(t *testing.T) {
-	priv := newTestKey(t)
-	valid := encryptAsym(t, priv.PublicKey(), format.AlgoAESGCM, testMessage, core.Options{})
-
-	verify := func(key *ecdh.PrivateKey) error {
-		r := bytes.NewReader(valid)
-		header, err := core.ReadHeaderAsymmetric(r)
-		if err != nil {
-			t.Fatalf("ReadHeaderAsymmetric has failed: %v", err)
-		}
-		return core.VerifyAsymmetric(header, r, key, 1)
-	}
-
-	if err := verify(priv); err != nil {
-		t.Fatalf("VerifyAsymmetric(valid) = %v, want nil", err)
-	}
-
-	if err := verify(newTestKey(t)); !errors.Is(err, encryption.ErrWrongIdentity) {
-		t.Fatalf("VerifyAsymmetric(wrong key) = %v, want %v", err, encryption.ErrWrongIdentity)
-	}
-}

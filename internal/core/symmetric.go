@@ -8,34 +8,29 @@ import (
 )
 
 func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, profile uint8, opts Options) error {
-	salt := encryption.GenerateSalt()
-
-	var header format.HeaderSymmetric
-
 	kdfParams, ok := encryption.KDFProfileParams(profile)
 	if !ok {
 		return encryption.ErrUnknownKDFProfile
 	}
 
-	header.Magic = format.MagicBytes
-	header.Version = format.Version
-	header.Mode = format.Symmetric
-	header.EncryptionAlgo = algo
-	header.KDFMemory = kdfParams.Memory
-	header.KDFTime = kdfParams.Time
-	header.KDFThreads = kdfParams.Threads
-	header.Salt = [encryption.SaltSize]byte(salt)
-	header.ChunkSize = opts.ChunkSize
-	if header.ChunkSize == 0 {
-		header.ChunkSize = format.DefaultChunkSize
+	header := format.HeaderSymmetric{
+		Magic:          format.MagicBytes,
+		Version:        format.Version,
+		Mode:           format.Symmetric,
+		EncryptionAlgo: algo,
+		KDFMemory:      kdfParams.Memory,
+		KDFTime:        kdfParams.Time,
+		KDFThreads:     kdfParams.Threads,
+		Salt:           [encryption.SaltSize]byte(encryption.GenerateSalt()),
+		ChunkSize:      opts.chunkSize(),
+		NoncePrefix:    [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix()),
 	}
-	header.NoncePrefix = [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix())
 
 	if err := header.IsValid(); err != nil {
 		return err
 	}
 
-	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, salt, kdfParams)
+	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
 	defer encryption.ZeroBytes(key)
 
 	aead, err := newAEAD(algo, key)
@@ -65,6 +60,11 @@ func ReadHeaderSymmetric(r io.Reader) (format.HeaderSymmetric, error) {
 }
 
 func DecryptSymmetric(header format.HeaderSymmetric, r io.Reader, w io.Writer, passphrase []byte, workers int) error {
+	// the KDF parameters come from the file: bounded before any work
+	if err := header.IsValid(); err != nil {
+		return err
+	}
+
 	kdfParams := encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads}
 	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
 	defer encryption.ZeroBytes(key)
@@ -75,8 +75,4 @@ func DecryptSymmetric(header format.HeaderSymmetric, r io.Reader, w io.Writer, p
 	}
 
 	return openStream(aead, symmetricStream(header), r, w, max(workers, 1))
-}
-
-func VerifySymmetric(header format.HeaderSymmetric, r io.Reader, passphrase []byte, workers int) error {
-	return DecryptSymmetric(header, r, io.Discard, passphrase, workers)
 }

@@ -103,15 +103,13 @@ func runPipeline(workers int, src chunkSource, pool *bufferPool, process func(*c
 	}()
 
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			for c := range jobs {
 				c.err = process(c)
 				close(c.done)
 			}
-		}()
+		})
 	}
 
 	var err error

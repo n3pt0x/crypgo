@@ -40,11 +40,7 @@ type PrivateKey struct {
 // PublicKey
 
 func (k PublicKey) IsValid() error {
-	if err := validPrefix(k.Magic, k.Version, Version, k.Mode, ModePublicKey); err != nil {
-		return err
-	}
-
-	return nil
+	return validPrefix(k.Magic, k.Version, k.Mode, ModePublicKey)
 }
 
 func (k PublicKey) WriteTo(w io.Writer) (int64, error) {
@@ -59,15 +55,11 @@ func (k *PublicKey) ReadFrom(r io.Reader) (int64, error) {
 
 // IsValid checks the prefix (magic, version, mode) and the KDF parameters.
 func (h PrivateKeyHeader) IsValid() error {
-	if err := validPrefix(h.Magic, h.Version, Version, h.Mode, ModePrivateKey); err != nil {
+	if err := validPrefix(h.Magic, h.Version, h.Mode, ModePrivateKey); err != nil {
 		return err
 	}
 
-	if err := validKDF(h.KDFMemory, h.KDFTime, h.KDFThreads); err != nil {
-		return err
-	}
-
-	return nil
+	return validKDF(h.KDFMemory, h.KDFTime, h.KDFThreads)
 }
 
 // Bytes returns the serialized header: the AAD of the encrypted private key.

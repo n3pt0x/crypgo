@@ -61,7 +61,7 @@ var rekeyCmd = &cobra.Command{
 		// a file encrypted with a public key has no passphrase to change
 		for key, h := range headers {
 			if h.mode != format.Symmetric {
-				return fmt.Errorf("%s: %w", ins[key].file.Name(), ErrRekeyAsymmetric)
+				return ins[key].wrap(ErrRekeyAsymmetric)
 			}
 		}
 
@@ -85,7 +85,7 @@ var rekeyCmd = &cobra.Command{
 			}
 
 			if err := rekey(in, headers[key].sym, oldPassphrase, newPassphrase, fileAlgo, profile, enc, rekeyWorkers); err != nil {
-				return fmt.Errorf("%s: %w", in.file.Name(), err)
+				return in.wrap(err)
 			}
 
 			fmt.Fprintf(cmd.ErrOrStderr(), "[+] Rekeyed file : %s\n", in.file.Name())

@@ -50,12 +50,9 @@ func EncryptAsymmetric(r io.Reader, w io.Writer, recipient *ecdh.PublicKey, algo
 		Version:         format.Version,
 		Mode:            format.Asymmetric,
 		EncryptionAlgo:  algo,
-		ChunkSize:       opts.ChunkSize,
+		ChunkSize:       opts.chunkSize(),
 		NoncePrefix:     [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix()),
 		EphemeralPublic: [encryption.PublicKeySize]byte(ephPub),
-	}
-	if header.ChunkSize == 0 {
-		header.ChunkSize = format.DefaultChunkSize
 	}
 
 	if err := header.IsValid(); err != nil {
@@ -117,17 +114,9 @@ func DecryptAsymmetric(header format.HeaderAsymmetric, r io.Reader, w io.Writer,
 		return err
 	}
 
-	if err := openStream(aead, asymmetricStream(header), r, w, max(workers, 1)); err != nil {
-		if errors.Is(err, encryption.ErrDecryptionFailed) {
-			return encryption.ErrWrongIdentity
-		}
-
-		return err
+	err = openStream(aead, asymmetricStream(header), r, w, max(workers, 1))
+	if errors.Is(err, encryption.ErrDecryptionFailed) {
+		return encryption.ErrWrongIdentity
 	}
-
-	return nil
-}
-
-func VerifyAsymmetric(header format.HeaderAsymmetric, r io.Reader, priv *ecdh.PrivateKey, workers int) error {
-	return DecryptAsymmetric(header, r, io.Discard, priv, workers)
+	return err
 }
