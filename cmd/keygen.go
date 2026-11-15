@@ -89,7 +89,8 @@ func newKeyPair(cmd *cobra.Command) error {
 	}
 
 	fmt.Fprintf(cmd.ErrOrStderr(), "[+] Private key file : %s\n", privatePath)
-	fmt.Fprintf(cmd.ErrOrStderr(), "[+] Public key file : %s\n", publicPath)
+	fmt.Fprintf(cmd.ErrOrStderr(), "[+] Public key file  : %s\n", publicPath)
+	fmt.Fprintf(cmd.ErrOrStderr(), "[+] Fingerprint      : %s\n", core.Fingerprint(publicKey))
 
 	return nil
 }
@@ -121,7 +122,8 @@ func writePublicKey(cmd *cobra.Command, keyPath string) error {
 		return err
 	}
 
-	w, err := writeKey(publicPath, armor.PublicKey, core.PublicKeyOf(key), publicKeyPerm)
+	publicKey := core.PublicKeyOf(key)
+	w, err := writeKey(publicPath, armor.PublicKey, publicKey, publicKeyPerm)
 	if err != nil {
 		return err
 	}
@@ -132,6 +134,7 @@ func writePublicKey(cmd *cobra.Command, keyPath string) error {
 	}
 
 	fmt.Fprintf(cmd.ErrOrStderr(), "[+] Public key file : %s\n", publicPath)
+	fmt.Fprintf(cmd.ErrOrStderr(), "[+] Fingerprint     : %s\n", core.Fingerprint(publicKey))
 
 	return nil
 }

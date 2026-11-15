@@ -2,6 +2,8 @@ package core
 
 import (
 	"crypto/ecdh"
+	"crypto/sha256"
+	"encoding/hex"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
@@ -31,6 +33,14 @@ func PublicKeyOf(key *ecdh.PrivateKey) format.PublicKey {
 		Mode:    format.ModePublicKey,
 		Public:  [encryption.PublicKeySize]byte(key.PublicKey().Bytes()),
 	}
+}
+
+// Fingerprint returns the fingerprint (SHA256) of the public key file key
+func Fingerprint(key format.PublicKey) string {
+	h := sha256.New()
+	h.Write([]byte("crypgo fingerprint"))
+	key.WriteTo(h)
+	return "SHA256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // OpenPrivateKey decrypts the private key with passphrase. A wrong passphrase or
