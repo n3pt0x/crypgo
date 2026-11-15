@@ -36,7 +36,7 @@ release:
 		os=$${p%/*}; arch=$${p#*/}; ext=; \
 		[ $$os = windows ] && ext=.exe; \
 		echo "$(BINARY)-$$os-$$arch$$ext"; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -trimpath -o $(DIST)/$(BINARY)-$$os-$$arch$$ext . || exit 1; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o $(DIST)/$(BINARY)-$$os-$$arch$$ext . || exit 1; \
 	done
 
 fclean: clean
