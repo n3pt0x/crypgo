@@ -40,7 +40,7 @@ func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, p
 
 	aead, err := newAEAD(algo, key)
 	if err != nil {
-		return encryption.ErrEncryptionFailed
+		return err
 	}
 
 	if _, err := header.WriteTo(w); err != nil {

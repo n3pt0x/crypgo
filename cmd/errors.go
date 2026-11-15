@@ -34,4 +34,5 @@ var (
 	ErrKeyNeeded             = errors.New("file encrypted with a public key: give the private key with --key")
 	ErrKeyWithSymmetric      = errors.New("--key is only for files encrypted with a public key")
 	ErrParanoidWithRecipient = errors.New("--paranoid can't be used with --recipient: no passphrase protects the file")
+	ErrTrailingData          = errors.New("unexpected data after the key")
 )

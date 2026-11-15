@@ -122,11 +122,11 @@ func TestDecryptAsymmetricErrors(t *testing.T) {
 		{"empty input", nil, priv, format.ErrTruncated},
 		{"header only", valid[:headerSize], priv, format.ErrTruncated},
 		{"bad magic", with(func(b []byte) { b[0] ^= 0xff }), priv, format.ErrInvalidMagic},
-		{"wrong key", valid, other, encryption.ErrDecryptionFailed},
-		{"tampered ciphertext", with(func(b []byte) { b[len(b)-1] ^= 0xff }), priv, encryption.ErrDecryptionFailed},
-		{"truncated ciphertext", valid[:len(valid)-1], priv, encryption.ErrDecryptionFailed},
+		{"wrong key", valid, other, encryption.ErrWrongIdentity},
+		{"tampered ciphertext", with(func(b []byte) { b[len(b)-1] ^= 0xff }), priv, encryption.ErrWrongIdentity},
+		{"truncated ciphertext", valid[:len(valid)-1], priv, encryption.ErrWrongIdentity},
 		// The ephemeral public key is the last field of the header.
-		{"tampered ephemeral key", with(func(b []byte) { b[headerSize-1] ^= 0x01 }), priv, encryption.ErrDecryptionFailed},
+		{"tampered ephemeral key", with(func(b []byte) { b[headerSize-1] ^= 0x01 }), priv, encryption.ErrWrongIdentity},
 	}
 
 	for _, tt := range tests {
@@ -159,7 +159,7 @@ func TestVerifyAsymmetric(t *testing.T) {
 		t.Fatalf("VerifyAsymmetric(valid) = %v, want nil", err)
 	}
 
-	if err := verify(newTestKey(t)); !errors.Is(err, encryption.ErrDecryptionFailed) {
-		t.Fatalf("VerifyAsymmetric(wrong key) = %v, want %v", err, encryption.ErrDecryptionFailed)
+	if err := verify(newTestKey(t)); !errors.Is(err, encryption.ErrWrongIdentity) {
+		t.Fatalf("VerifyAsymmetric(wrong key) = %v, want %v", err, encryption.ErrWrongIdentity)
 	}
 }

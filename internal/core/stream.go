@@ -106,7 +106,8 @@ func openStream(aead cipher.AEAD, p streamParams, r io.Reader, w io.Writer, work
 		if err != nil {
 			// A last chunk that authenticates as a middle one means the stream was cut after it.
 			encryption.ChunkNonce(nonce, p.noncePrefix, c.index, false)
-			if _, err := aead.Open(nil, nonce, c.data, aad); err == nil {
+			if middle, err := aead.Open(nil, nonce, c.data, aad); err == nil {
+				clear(middle)
 				return format.ErrTruncated
 			}
 			return encryption.ErrDecryptionFailed

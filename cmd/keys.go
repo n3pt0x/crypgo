@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"crypto/ecdh"
+	"errors"
 	"fmt"
 	"io"
 
@@ -25,6 +26,15 @@ func readKeyFile(path string, label armor.Label, key io.ReaderFrom) error {
 	}
 
 	if _, err := key.ReadFrom(r); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+
+	// one byte more: io.EOF only comes once the footer is read and checked
+	var extra [1]byte
+	switch _, err := io.ReadFull(r, extra[:]); {
+	case err == nil:
+		return fmt.Errorf("%s: %w", path, ErrTrailingData)
+	case !errors.Is(err, io.EOF):
 		return fmt.Errorf("%s: %w", path, err)
 	}
 

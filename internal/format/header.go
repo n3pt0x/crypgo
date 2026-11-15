@@ -37,8 +37,8 @@ const (
 const PrefixSize = 8
 
 const (
-	MaxKDFMemory  = 2 << 20 // 2 GiB, expressed in KiB (argon2's unit)
-	MaxKDFTime    = 50
+	MaxKDFMemory  = 1 << 20 // 1 GiB, expressed in KiB (argon2's unit)
+	MaxKDFTime    = 10
 	MinKDFThreads = 1
 	MaxKDFThreads = 64
 )

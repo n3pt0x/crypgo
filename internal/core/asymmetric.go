@@ -4,6 +4,7 @@ import (
 	"crypto/ecdh"
 	"crypto/hkdf"
 	"crypto/sha256"
+	"errors"
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
@@ -115,7 +116,15 @@ func DecryptAsymmetric(header format.HeaderAsymmetric, r io.Reader, w io.Writer,
 		return err
 	}
 
-	return openStream(aead, asymmetricStream(header), r, w, max(workers, 1))
+	if err := openStream(aead, asymmetricStream(header), r, w, max(workers, 1)); err != nil {
+		if errors.Is(err, encryption.ErrDecryptionFailed) {
+			return encryption.ErrWrongIdentity
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func VerifyAsymmetric(header format.HeaderAsymmetric, r io.Reader, priv *ecdh.PrivateKey, workers int) error {
