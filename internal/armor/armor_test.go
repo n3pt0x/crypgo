@@ -192,6 +192,9 @@ func TestReaderErrors(t *testing.T) {
 	}{
 		"not an armor":     {"hello world\n", armor.ErrInvalidHeader},
 		"missing footer":   {strings.Replace(valid, armor.Message.Footer()+"\n", "", 1), armor.ErrTruncated},
+		"cut footer":       {strings.Replace(valid, armor.Message.Footer()+"\n", armor.Message.Footer()[:10], 1), armor.ErrTruncated},
+		"short footer":     {strings.Replace(valid, armor.Message.Footer()+"\n", "-----END X-----\n", 1), armor.ErrInvalidFooter},
+		"other footer":     {strings.Replace(valid, armor.Message.Footer(), armor.PublicKey.Footer(), 1), armor.ErrInvalidFooter},
 		"unknown encoding": {strings.Replace(valid, armor.FormatBase64, "Encoding: base32", 1), armor.ErrUnknownEncoding},
 		"missing blank":    {armor.Message.Header() + "\n" + armor.FormatBase64 + "\nAAAA\n", armor.ErrInvalidHeader},
 	}

@@ -59,11 +59,23 @@ var keygenCmd = &cobra.Command{
 			return err
 		}
 
-		if err := writeKey(privatePath, armor.PrivateKey, privateKey, privateKeyPerm); err != nil {
+		wPriv, err := writeKey(privatePath, armor.PrivateKey, privateKey, privateKeyPerm)
+		if err != nil {
 			return err
 		}
+		defer wPriv.Abort()
 
-		if err := writeKey(publicPath, armor.PublicKey, publicKey, publicKeyPerm); err != nil {
+		wPub, err := writeKey(publicPath, armor.PublicKey, publicKey, publicKeyPerm)
+		if err != nil {
+			return err
+		}
+		defer wPub.Abort()
+
+		// both keys are fully written: only now replace the files
+		if err := wPriv.Commit(); err != nil {
+			return err
+		}
+		if err := wPub.Commit(); err != nil {
 			return err
 		}
 
@@ -81,31 +93,37 @@ func init() {
 	rootCmd.AddCommand(keygenCmd)
 }
 
-// writeKey writes key armored with label to path, atomically, with the permissions perm.
-func writeKey(path string, label armor.Label, key io.WriterTo, perm os.FileMode) error {
+// writeKey writes key armored with label, with the permissions perm, to a
+// temporary file. The caller commits it to path, or aborts it.
+func writeKey(path string, label armor.Label, key io.WriterTo, perm os.FileMode) (_ *fileio.AtomicWriter, err error) {
 	w, err := fileio.NewAtomicWriter(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	defer w.Abort()
+	// only on failure: on success, w goes to the caller
+	defer func() {
+		if err != nil {
+			w.Abort()
+		}
+	}()
 
 	if err := w.Chmod(perm); err != nil {
-		return err
+		return nil, err
 	}
 
 	aw, err := armor.NewWriter(w, label, armor.Base64)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if _, err := key.WriteTo(aw); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := aw.Close(); err != nil {
-		return err
+		return nil, err
 	}
 
-	return w.Commit()
+	return w, nil
 }

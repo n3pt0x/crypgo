@@ -35,6 +35,7 @@ make release    # linux, macOS and windows binaries (amd64, arm64) in dist/
 crypgo encrypt notes.txt
 
 # Decrypt -> notes.txt (refuses to overwrite an existing file without -f)
+# A file without .crypgo decrypts to <file>.out
 crypgo decrypt notes.txt.crypgo
 
 # Check the file and the passphrase without writing anything
@@ -112,7 +113,7 @@ Encrypted data is never printed to a terminal, armored text included: use `-o <f
 - Output goes to a temporary file, renamed once everything is done. Ctrl-C and SIGTERM remove it; `SIGKILL` or a power loss can leave a `.crypgo-*.tmp` file next to the output.
 - Decrypting to stdout writes each chunk as soon as it is authenticated, so a corrupted input fails after the first chunks were printed. Decrypting to a file never leaves a partial result.
 - Windows builds are provided but still experimental. Use cmd, PowerShell or Windows Terminal. Git Bash (mintty) and binary pipes in PowerShell 5.1 are not supported.
-- The flag `--delete` removes the original file but does not securely erase it (required `--output` flag)
+- `--delete` removes the original file once the output is written. It does not securely erase it, and it is refused with stdin or `--output -`.
 - Armor is only a text form of the same file, not extra protection. It is about 35 % bigger in base64 and a bit more than twice as big in hex.
 - Armored files keep the `.crypgo` extension by default. Use `-e` (for instance `-e .asc`) to tell them apart, on both sides.
 - `decrypt` and `verify` accept what a copy and paste adds: blank lines, indentation, a byte order mark, Windows line endings, long lines. A missing `END` line means a truncated file, and anything after it is ignored.

@@ -5,6 +5,7 @@ import (
 	"crypto/hkdf"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
@@ -32,7 +33,7 @@ func EncryptAsymmetric(r io.Reader, w io.Writer, recipient *ecdh.PublicKey, algo
 
 	shared, err := eph.ECDH(recipient)
 	if err != nil {
-		return err
+		return fmt.Errorf("recipient public key: %w", err)
 	}
 	defer encryption.ZeroBytes(shared)
 
@@ -101,7 +102,7 @@ func DecryptAsymmetric(header format.HeaderAsymmetric, r io.Reader, w io.Writer,
 
 	shared, err := priv.ECDH(ephPub)
 	if err != nil {
-		return err
+		return fmt.Errorf("ephemeral public key: %w", err)
 	}
 	defer encryption.ZeroBytes(shared)
 

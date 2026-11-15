@@ -6,6 +6,7 @@ import (
 )
 
 const encryptedExt = ".crypgo"
+const unknownExt = ".out" // decrypted file whose input has no encrypted extension
 const maxWorkers = 256
 
 var (
@@ -23,9 +24,9 @@ var (
 	ErrExtensionWithOutput      = errors.New("--extension can't be used with --output")
 	ErrOutputDuplicate          = errors.New("several input files would write to this output")
 
-	ErrDeleteRestricted  = errors.New("--delete is restricted for Stdin pipe")
-	ErrDeleteNeedsOutput = errors.New("--delete needs an input file and --output <file>")
-	ErrDeleteSameFile    = errors.New("--delete: output and input are the same file")
+	ErrDeleteRestricted = errors.New("--delete needs input files, not stdin")
+	ErrDeleteToStdout   = errors.New("--delete can't be used with --output -: the output must be a file")
+	ErrDeleteSameFile   = errors.New("--delete: output and input are the same file")
 
 	ErrRekeyStdin      = errors.New("rekey needs file arguments: it rewrites the files in place")
 	ErrRekeyAsymmetric = errors.New("rekey only applies to files encrypted with a passphrase, not with a public key")

@@ -21,7 +21,7 @@ var (
 
 var encryptCmd = &cobra.Command{
 	Use:   "encrypt [file...]",
-	Short: "Encrypt files (or stdin) with a passphrase",
+	Short: "Encrypt files (or stdin) with a passphrase, or a public key with --recipient",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if encryptRecipient != "" && encryptParanoid {

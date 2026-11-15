@@ -65,17 +65,3 @@ func readPrivateKey(path string) (format.PrivateKey, error) {
 	}
 	return key, nil
 }
-
-func unlock(keyPath string, passphrase []byte) (*ecdh.PrivateKey, error) {
-	key, err := readPrivateKey(keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	privateKey, err := core.OpenPrivateKey(key, passphrase)
-	if err != nil {
-		return nil, err
-	}
-
-	return privateKey, nil
-}

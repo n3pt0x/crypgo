@@ -12,7 +12,7 @@ import (
 
 var (
 	verifyWorkers int
-	verifyKey     string
+	verifyKeyPath string
 )
 
 var verifyCmd = &cobra.Command{
@@ -50,7 +50,7 @@ var verifyCmd = &cobra.Command{
 		// check mode
 		switch mode {
 		case format.Symmetric:
-			if verifyKey != "" {
+			if verifyKeyPath != "" {
 				return ErrKeyWithSymmetric
 			}
 
@@ -61,17 +61,22 @@ var verifyCmd = &cobra.Command{
 			defer encryption.ZeroBytes(passphrase)
 
 		case format.Asymmetric:
-			if verifyKey == "" {
+			if verifyKeyPath == "" {
 				return ErrKeyNeeded
 			}
 
-			keyPassphrase, err := readPassphrase(promptKeyPassphrase, false)
+			key, err := readPrivateKey(verifyKeyPath)
 			if err != nil {
 				return err
 			}
-			defer encryption.ZeroBytes(keyPassphrase)
 
-			privateKey, err = unlock(verifyKey, keyPassphrase)
+			passphrase, err = readPassphrase(promptKeyPassphrase, false)
+			if err != nil {
+				return err
+			}
+			defer encryption.ZeroBytes(passphrase)
+
+			privateKey, err = core.OpenPrivateKey(key, passphrase)
 			if err != nil {
 				return err
 			}
@@ -99,6 +104,6 @@ var verifyCmd = &cobra.Command{
 
 func init() {
 	verifyCmd.Flags().IntVarP(&verifyWorkers, "workers", "w", defaultWorkers(), "chunks decrypted in parallel")
-	verifyCmd.Flags().StringVarP(&verifyKey, "key", "k", "", "private key (asymmetric)")
+	verifyCmd.Flags().StringVarP(&verifyKeyPath, "key", "k", "", "private key (asymmetric)")
 	rootCmd.AddCommand(verifyCmd)
 }

@@ -120,8 +120,7 @@ func readHeaders(ins []*input) ([]fileHeader, error) {
 		header, err := readHeader(in)
 		if err != nil {
 			if errors.Is(err, format.ErrInvalidMagic) && in.file != nil {
-				// err + filename
-				return nil, fmt.Errorf("%v: %s", err, in.file.Name())
+				return nil, fmt.Errorf("%s: %w", in.file.Name(), err)
 			}
 			return nil, err
 		}

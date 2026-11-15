@@ -326,8 +326,16 @@ func (b *bodyReader) read(p []byte) (int, error) {
 // readFooter checks the footer, and returns io.EOF when it is the right one.
 func (b *bodyReader) readFooter() error {
 	footer := make([]byte, len(b.footer))
-	if _, err := io.ReadFull(b.br, footer); err != nil {
-		return ErrTruncated
+	n, err := io.ReadFull(b.br, footer)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		// the start of the right footer is a cut file, anything else a wrong footer
+		if strings.HasPrefix(b.footer, string(footer[:n])) {
+			return ErrTruncated
+		}
+		return ErrInvalidFooter
+	}
+	if err != nil {
+		return err
 	}
 
 	if string(footer) != b.footer {

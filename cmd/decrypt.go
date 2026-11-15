@@ -4,6 +4,7 @@ import (
 	"crypto/ecdh"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -13,8 +14,8 @@ import (
 )
 
 var (
-	decryptOpts ioOptions
-	decryptKey  string
+	decryptOpts    ioOptions
+	decryptKeyPath string
 )
 
 var decryptCmd = &cobra.Command{
@@ -33,6 +34,14 @@ var decryptCmd = &cobra.Command{
 		}
 
 		allPath := decryptDefaultPath(args, opts.extension)
+
+		if opts.output == "" {
+			for i, arg := range args {
+				if allPath[i] == arg+unknownExt {
+					fmt.Fprintf(cmd.ErrOrStderr(), "[!] %s: no %s extension, decrypting to %s\n", arg, outputExt(opts.extension), allPath[i])
+				}
+			}
+		}
 
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
@@ -74,7 +83,7 @@ var decryptCmd = &cobra.Command{
 		// check mode
 		switch mode {
 		case format.Symmetric:
-			if decryptKey != "" {
+			if decryptKeyPath != "" {
 				return ErrKeyWithSymmetric
 			}
 
@@ -87,17 +96,22 @@ var decryptCmd = &cobra.Command{
 			open = symmetricOpen(passphrase, decryptOpts.workers)
 
 		case format.Asymmetric:
-			if decryptKey == "" {
+			if decryptKeyPath == "" {
 				return ErrKeyNeeded
 			}
 
-			keyPassphrase, err := readPassphrase(promptKeyPassphrase, false)
+			key, err := readPrivateKey(decryptKeyPath)
 			if err != nil {
 				return err
 			}
-			defer encryption.ZeroBytes(keyPassphrase)
 
-			privateKey, err = unlock(decryptKey, keyPassphrase)
+			passphrase, err = readPassphrase(promptKeyPassphrase, false)
+			if err != nil {
+				return err
+			}
+			defer encryption.ZeroBytes(passphrase)
+
+			privateKey, err = core.OpenPrivateKey(key, passphrase)
 			if err != nil {
 				return err
 			}
@@ -129,12 +143,15 @@ var decryptCmd = &cobra.Command{
 
 func init() {
 	decryptOpts.bind(decryptCmd,
-		"output file, \"-\" for stdout (default: <file> without .crypgo, or stdout when reading stdin)",
+		"output file, \"-\" for stdout (default: <file> without .crypgo, <file>.out if it has no .crypgo, or stdout when reading stdin)",
 		"chunks decrypted in parallel")
-	decryptCmd.Flags().StringVarP(&decryptKey, "key", "k", "", "private key (asymmetric)")
+	decryptCmd.Flags().StringVarP(&decryptKeyPath, "key", "k", "", "private key (asymmetric)")
 	rootCmd.AddCommand(decryptCmd)
 }
 
+// decryptDefaultPath strips the extension of encrypted files from each input.
+// Without it (or with nothing left), it appends .out instead: the output must
+// never be the input.
 func decryptDefaultPath(args []string, extension string) []string {
 	if fromStdin(args) {
 		return []string{""}
@@ -144,7 +161,11 @@ func decryptDefaultPath(args []string, extension string) []string {
 
 	out := make([]string, 0, len(args))
 	for _, arg := range args {
-		out = append(out, strings.TrimSuffix(arg, ext))
+		base, ok := strings.CutSuffix(arg, ext)
+		if !ok || filepath.Base(arg) == ext {
+			base = arg + unknownExt
+		}
+		out = append(out, base)
 	}
 
 	return out

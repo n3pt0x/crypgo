@@ -26,7 +26,7 @@ type ioOptions struct {
 func (o *ioOptions) bind(cmd *cobra.Command, outputUsage, workersUsage string) {
 	cmd.Flags().StringVarP(&o.output, "output", "o", "", outputUsage)
 	cmd.Flags().StringVarP(&o.extension, "extension", "e", "", "extension used instead of .crypgo: appended when encrypting, stripped when decrypting (not with --output)")
-	cmd.Flags().BoolVarP(&o.erase, "delete", "d", false, "removes the original file, does not securely erase it (required --output flag)")
+	cmd.Flags().BoolVarP(&o.erase, "delete", "d", false, "remove the original file once the output is written (not a secure erase)")
 	cmd.Flags().BoolVarP(&o.force, "force", "f", false, "overwrite the output file if it exists")
 	cmd.Flags().IntVarP(&o.workers, "workers", "w", defaultWorkers(), workersUsage)
 }
@@ -97,7 +97,7 @@ func checkDelete(args []string, output string) error {
 
 	// -o specified without value
 	if output == "-" {
-		return ErrDeleteNeedsOutput
+		return ErrDeleteToStdout
 	}
 
 	// default output : file + ext
