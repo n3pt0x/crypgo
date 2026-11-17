@@ -1,22 +1,23 @@
 package cmd
 
 import (
-	"crypto/ecdh"
+	"crypto/hpke"
 	"fmt"
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/armor"
 	"github.com/n3pt0x/crypgo/internal/core"
 	"github.com/n3pt0x/crypgo/internal/encryption"
+	"github.com/n3pt0x/crypgo/internal/format"
 	"github.com/spf13/cobra"
 )
 
 var (
-	encryptOpts      ioOptions
-	encryptAlgo      string
-	encryptRecipient string
-	encryptParanoid  bool
-	encryptArmor     string
+	encryptOpts       ioOptions
+	encryptAlgo       string
+	encryptRecipients []string
+	encryptParanoid   bool
+	encryptArmor      string
 )
 
 var encryptCmd = &cobra.Command{
@@ -24,8 +25,12 @@ var encryptCmd = &cobra.Command{
 	Short: "Encrypt files (or stdin) with a passphrase, or a public key with --recipient",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if encryptRecipient != "" && encryptParanoid {
+		if len(encryptRecipients) > 0 && encryptParanoid {
 			return ErrParanoidWithRecipient
+		}
+
+		if len(encryptRecipients) > format.MaxRecipients {
+			return ErrTooManyRecipients
 		}
 
 		algo, err := parseAlgo(encryptAlgo)
@@ -76,13 +81,17 @@ var encryptCmd = &cobra.Command{
 			Workers: opts.workers,
 		}
 
-		if encryptRecipient != "" {
-			recipient, err := readPublicKey(encryptRecipient)
-			if err != nil {
-				return err
+		if len(encryptRecipients) > 0 {
+			recipients := make([]hpke.PublicKey, 0, len(encryptRecipients))
+			for _, path := range encryptRecipients {
+				recipient, err := readPublicKey(path)
+				if err != nil {
+					return err
+				}
+				recipients = append(recipients, recipient)
 			}
 
-			seal = asymmetricSeal(recipient, algo, coreOpts)
+			seal = asymmetricSeal(recipients, algo, coreOpts)
 		} else {
 			passphrase, err := readPassphrase(promptPassphrase, true)
 			if err != nil {
@@ -119,7 +128,7 @@ func init() {
 		"output file, \"-\" for stdout (default: <file>.crypgo, or stdout when reading stdin)",
 		"chunks encrypted in parallel")
 	encryptCmd.Flags().StringVarP(&encryptAlgo, "algo", "a", "xchacha20", "algorithm: aes-gcm | xchacha20")
-	encryptCmd.Flags().StringVarP(&encryptRecipient, "recipient", "r", "", "recipient public key (asymmetric)")
+	encryptCmd.Flags().StringArrayVarP(&encryptRecipients, "recipient", "r", nil, "recipient public key (asymmetric), repeatable")
 	encryptCmd.Flags().BoolVar(&encryptParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
 	bindArmor(encryptCmd, &encryptArmor, "write text instead of binary: --armor (base64) | --armor=hex (decrypt detects it)")
 	rootCmd.AddCommand(encryptCmd)
@@ -149,10 +158,10 @@ func symmetricSeal(passphrase []byte, algo, profile uint8, opts core.Options) se
 	}
 }
 
-// asymmetricSeal encrypts for the owner of the private key matching recipient
-func asymmetricSeal(recipient *ecdh.PublicKey, algo uint8, opts core.Options) sealFunc {
+// asymmetricSeal encrypts for the owners of the private keys matching recipients
+func asymmetricSeal(recipients []hpke.PublicKey, algo uint8, opts core.Options) sealFunc {
 	return func(r io.Reader, w io.Writer) error {
-		return core.EncryptAsymmetric(r, w, recipient, algo, opts)
+		return core.EncryptAsymmetric(r, w, recipients, algo, opts)
 	}
 }
 

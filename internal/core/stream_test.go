@@ -26,8 +26,8 @@ var (
 	errTimeout = errors.New("pipeline did not return (deadlock?)")
 )
 
-func testHeader(algo uint8, chunkSize uint32) format.HeaderSymmetric {
-	return format.HeaderSymmetric{
+func testHeader(algo uint8, chunkSize uint32) format.FileHeader {
+	return format.FileHeader{
 		Magic:          format.MagicBytes,
 		Version:        format.Version,
 		Mode:           format.Symmetric,
@@ -37,7 +37,7 @@ func testHeader(algo uint8, chunkSize uint32) format.HeaderSymmetric {
 	}
 }
 
-func testSeal(t *testing.T, header format.HeaderSymmetric, plaintext []byte, workers int) []byte {
+func testSeal(t *testing.T, header format.FileHeader, plaintext []byte, workers int) []byte {
 	t.Helper()
 
 	aead, err := newAEAD(header.EncryptionAlgo, testKey)
@@ -46,21 +46,21 @@ func testSeal(t *testing.T, header format.HeaderSymmetric, plaintext []byte, wor
 	}
 
 	var out bytes.Buffer
-	if err := sealStream(aead, symmetricStream(header), bytes.NewReader(plaintext), &out, workers); err != nil {
+	if err := sealStream(aead, fileStream(header), bytes.NewReader(plaintext), &out, workers); err != nil {
 		t.Fatalf("sealStream has failed: %v", err)
 	}
 
 	return out.Bytes()
 }
 
-func testOpen(header format.HeaderSymmetric, ciphertext []byte, workers int) ([]byte, error) {
+func testOpen(header format.FileHeader, ciphertext []byte, workers int) ([]byte, error) {
 	aead, err := newAEAD(header.EncryptionAlgo, testKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var out bytes.Buffer
-	err = openStream(aead, symmetricStream(header), bytes.NewReader(ciphertext), &out, workers)
+	err = openStream(aead, fileStream(header), bytes.NewReader(ciphertext), &out, workers)
 
 	return out.Bytes(), err
 }
@@ -152,7 +152,7 @@ func TestStreamTamperingIsDetected(t *testing.T) {
 
 			tests := []struct {
 				name   string
-				header format.HeaderSymmetric
+				header format.FileHeader
 				stream []byte
 				want   error
 			}{
@@ -198,7 +198,7 @@ func TestStreamWrongKey(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err = openStream(aead, symmetricStream(header), bytes.NewReader(ciphertext), &out, 2)
+	err = openStream(aead, fileStream(header), bytes.NewReader(ciphertext), &out, 2)
 	if !errors.Is(err, encryption.ErrDecryptionFailed) {
 		t.Fatalf("error = %v, want %v", err, encryption.ErrDecryptionFailed)
 	}
@@ -257,14 +257,14 @@ func TestStreamIOErrors(t *testing.T) {
 	for _, workers := range []int{1, 4} {
 		err := withTimeout(t, func() error {
 			r := &failingReader{data: plaintext[:10*testChunk+1], err: errBoom}
-			return sealStream(aead, symmetricStream(header), r, io.Discard, workers)
+			return sealStream(aead, fileStream(header), r, io.Discard, workers)
 		})
 		if !errors.Is(err, errBoom) {
 			t.Errorf("seal, failing reader (workers=%d): error = %v, want %v", workers, err, errBoom)
 		}
 
 		err = withTimeout(t, func() error {
-			return sealStream(aead, symmetricStream(header), bytes.NewReader(plaintext), &failingWriter{left: 5}, workers)
+			return sealStream(aead, fileStream(header), bytes.NewReader(plaintext), &failingWriter{left: 5}, workers)
 		})
 		if !errors.Is(err, errBoom) {
 			t.Errorf("seal, failing writer (workers=%d): error = %v, want %v", workers, err, errBoom)
@@ -272,14 +272,14 @@ func TestStreamIOErrors(t *testing.T) {
 
 		err = withTimeout(t, func() error {
 			r := &failingReader{data: ciphertext[:10*(testChunk+encryption.GCMTagSize)+1], err: errBoom}
-			return openStream(aead, symmetricStream(header), r, io.Discard, workers)
+			return openStream(aead, fileStream(header), r, io.Discard, workers)
 		})
 		if !errors.Is(err, errBoom) {
 			t.Errorf("open, failing reader (workers=%d): error = %v, want %v", workers, err, errBoom)
 		}
 
 		err = withTimeout(t, func() error {
-			return openStream(aead, symmetricStream(header), bytes.NewReader(ciphertext), &failingWriter{left: 5}, workers)
+			return openStream(aead, fileStream(header), bytes.NewReader(ciphertext), &failingWriter{left: 5}, workers)
 		})
 		if !errors.Is(err, errBoom) {
 			t.Errorf("open, failing writer (workers=%d): error = %v, want %v", workers, err, errBoom)
@@ -307,7 +307,7 @@ func TestStreamMemoryIsBounded(t *testing.T) {
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 
-	if err := sealStream(aead, symmetricStream(header), io.LimitReader(zeroReader{}, total), io.Discard, 4); err != nil {
+	if err := sealStream(aead, fileStream(header), io.LimitReader(zeroReader{}, total), io.Discard, 4); err != nil {
 		t.Fatalf("sealStream has failed: %v", err)
 	}
 
@@ -331,7 +331,7 @@ func BenchmarkSealStream(b *testing.B) {
 
 				b.SetBytes(total)
 				for i := 0; i < b.N; i++ {
-					if err := sealStream(aead, symmetricStream(header), io.LimitReader(zeroReader{}, total), io.Discard, workers); err != nil {
+					if err := sealStream(aead, fileStream(header), io.LimitReader(zeroReader{}, total), io.Discard, workers); err != nil {
 						b.Fatal(err)
 					}
 				}

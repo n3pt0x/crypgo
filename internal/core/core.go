@@ -13,6 +13,7 @@ type Options struct {
 	ChunkSize uint32 // plaintext bytes per chunk, format.DefaultChunkSize when unset
 }
 
+// chunkSize return DefaultChunkSize if o.ChunkSize is egal at 0 else return o.ChunkSize
 func (o Options) chunkSize() uint32 {
 	if o.ChunkSize == 0 {
 		return format.DefaultChunkSize

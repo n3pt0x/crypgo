@@ -1,18 +1,19 @@
 package core
 
 import (
-	"crypto/ecdh"
+	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-// GenerateKeyPair creates an X25519 key pair, the private key sealed with
+// GenerateKeyPair creates an ML-KEM-768 + X25519 key pair, the private key sealed with
 // passphrase (see SealPrivateKey).
 func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format.PrivateKey, error) {
-	key, err := encryption.GenerateX25519()
+	key, err := encryption.GenerateHybrid()
 	if err != nil {
 		return format.PublicKey{}, format.PrivateKey{}, err
 	}
@@ -26,12 +27,12 @@ func GenerateKeyPair(passphrase []byte, profile uint8) (format.PublicKey, format
 }
 
 // PublicKeyOf returns the public key file of key.
-func PublicKeyOf(key *ecdh.PrivateKey) format.PublicKey {
+func PublicKeyOf(key hpke.PrivateKey) format.PublicKey {
 	return format.PublicKey{
 		Magic:   format.MagicBytes,
 		Version: format.Version,
 		Mode:    format.ModePublicKey,
-		Public:  [encryption.PublicKeySize]byte(key.PublicKey().Bytes()),
+		Public:  [encryption.HybridPublicKeySize]byte(key.PublicKey().Bytes()),
 	}
 }
 
@@ -45,7 +46,7 @@ func Fingerprint(key format.PublicKey) string {
 
 // OpenPrivateKey decrypts the private key with passphrase. A wrong passphrase or
 // a modified file fails with encryption.ErrWrongKeyPassphrase.
-func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (*ecdh.PrivateKey, error) {
+func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (hpke.PrivateKey, error) {
 	if err := key.IsValid(); err != nil {
 		return nil, err
 	}
@@ -56,35 +57,27 @@ func OpenPrivateKey(key format.PrivateKey, passphrase []byte) (*ecdh.PrivateKey,
 		Threads: key.Header.KDFThreads,
 	}
 
-	derivedKey := encryption.DerivedKeyArgon2IDWithParams(passphrase, key.Header.Salt[:], argon2Params)
-	defer encryption.ZeroBytes(derivedKey)
-
-	aead, err := encryption.NewXChaCha20Poly1305(derivedKey)
-	if err != nil {
-		return nil, err
-	}
-
-	plain, err := aead.Open(nil, key.Header.Nonce[:], key.Wrapped[:], key.Header.Bytes())
+	plain, err := encryption.OpenPassphrase(passphrase, argon2Params, key.Header.Salt[:], key.Header.Nonce[:], key.Wrapped[:], key.Header.Bytes())
 	if err != nil {
 		return nil, encryption.ErrWrongKeyPassphrase
 	}
 
 	defer encryption.ZeroBytes(plain)
 
-	return encryption.ParseX25519Private(plain)
+	return encryption.ParseHybridPrivate(plain)
 }
 
-func OpenPublicKey(key format.PublicKey) (*ecdh.PublicKey, error) {
+func OpenPublicKey(key format.PublicKey) (hpke.PublicKey, error) {
 	if err := key.IsValid(); err != nil {
 		return nil, err
 	}
 
-	return encryption.ParseX25519Public(key.Public[:])
+	return encryption.ParseHybridPublic(key.Public[:])
 }
 
 // SealPrivateKey encrypts key with XChaCha20-Poly1305, under a key derived from
 // passphrase with the Argon2id profile
-func SealPrivateKey(key *ecdh.PrivateKey, passphrase []byte, profile uint8) (format.PrivateKey, error) {
+func SealPrivateKey(key hpke.PrivateKey, passphrase []byte, profile uint8) (format.PrivateKey, error) {
 	argon2Params, ok := encryption.KDFProfileParams(profile)
 	if !ok {
 		return format.PrivateKey{}, encryption.ErrUnknownKDFProfile
@@ -107,19 +100,22 @@ func SealPrivateKey(key *ecdh.PrivateKey, passphrase []byte, profile uint8) (for
 		return format.PrivateKey{}, err
 	}
 
-	derivedKey := encryption.DerivedKeyArgon2IDWithParams(passphrase, privKey.Header.Salt[:], argon2Params)
-	defer encryption.ZeroBytes(derivedKey)
-
-	aead, err := encryption.NewXChaCha20Poly1305(derivedKey)
+	// copy of the seed, zeroed once sealed
+	plain, err := key.Bytes()
 	if err != nil {
 		return format.PrivateKey{}, err
 	}
-
-	// Bytes returns a copy of the private key, zeroed once sealed
-	plain := key.Bytes()
 	defer encryption.ZeroBytes(plain)
 
-	aead.Seal(privKey.Wrapped[:0], privKey.Header.Nonce[:], plain, privKey.Header.Bytes())
+	if len(plain) != encryption.PrivateKeySize {
+		return format.PrivateKey{}, fmt.Errorf("private key: got %d bytes, want %d", len(plain), encryption.PrivateKeySize)
+	}
+
+	wrapped, err := encryption.SealPassphrase(passphrase, argon2Params, privKey.Header.Salt[:], privKey.Header.Nonce[:], plain, privKey.Header.Bytes())
+	if err != nil {
+		return format.PrivateKey{}, err
+	}
+	privKey.Wrapped = [encryption.WrappedPrivateKeySize]byte(wrapped)
 
 	return privKey, nil
 }

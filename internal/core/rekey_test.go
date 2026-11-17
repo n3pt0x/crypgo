@@ -12,103 +12,99 @@ import (
 
 var newPassphrase = []byte("another horse battery")
 
-func rekey(data []byte, oldPassphrase []byte, algo uint8, opts core.Options) ([]byte, error) {
+func rekey(data []byte, oldPassphrase []byte, profile uint8) ([]byte, error) {
 	r := bytes.NewReader(data)
 
-	header, err := core.ReadHeaderSymmetric(r)
+	header, err := core.ReadHeader(r)
 	if err != nil {
 		return nil, err
 	}
 
 	var out bytes.Buffer
-	err = core.RekeySymmetric(header, r, &out, oldPassphrase, newPassphrase, algo, encryption.KDFProfileArgon2idDefault, opts)
+	err = core.RekeySymmetric(header, r, &out, oldPassphrase, newPassphrase, profile)
 
 	return out.Bytes(), err
 }
 
 func TestRekeySymmetric(t *testing.T) {
-	// several chunks, so the pipe and the workers are used
 	plaintext := bytes.Repeat(testMessage, 200)
-	chunkSize := uint32(1024)
+	source := encrypt(t, format.AlgoXChaCha20Poly1305, plaintext, core.Options{ChunkSize: 1024})
 
-	algos := map[string]uint8{
-		"same algorithm":    format.AlgoXChaCha20Poly1305,
-		"another algorithm": format.AlgoAESGCM,
+	rekeyed, err := rekey(source, testPassphrase, encryption.KDFProfileArgon2idDefault)
+	if err != nil {
+		t.Fatalf("RekeySymmetric has failed: %v", err)
 	}
 
-	for name, algo := range algos {
-		t.Run(name, func(t *testing.T) {
-			source := encrypt(t, format.AlgoXChaCha20Poly1305, plaintext, core.Options{ChunkSize: chunkSize})
+	got, err := decrypt(rekeyed, newPassphrase, 4)
+	if err != nil {
+		t.Fatalf("DecryptSymmetric with the new passphrase has failed: %v", err)
+	}
+	if !bytes.Equal(got, plaintext) {
+		t.Fatal("rekeyed data differs from the plaintext")
+	}
 
-			rekeyed, err := rekey(source, testPassphrase, algo, core.Options{Workers: 4})
-			if err != nil {
-				t.Fatalf("RekeySymmetric has failed: %v", err)
-			}
+	if _, err := decrypt(rekeyed, testPassphrase, 1); !errors.Is(err, encryption.ErrDecryptionFailed) {
+		t.Fatalf("DecryptSymmetric with the old passphrase = %v, want %v", err, encryption.ErrDecryptionFailed)
+	}
 
-			got, err := decrypt(rekeyed, newPassphrase, 4)
-			if err != nil {
-				t.Fatalf("DecryptSymmetric with the new passphrase has failed: %v", err)
-			}
-			if !bytes.Equal(got, plaintext) {
-				t.Fatal("rekeyed data differs from the plaintext")
-			}
-
-			if _, err := decrypt(rekeyed, testPassphrase, 1); !errors.Is(err, encryption.ErrDecryptionFailed) {
-				t.Fatalf("DecryptSymmetric with the old passphrase = %v, want %v", err, encryption.ErrDecryptionFailed)
-			}
-
-			header, err := core.ReadHeaderSymmetric(bytes.NewReader(rekeyed))
-			if err != nil {
-				t.Fatalf("ReadHeaderSymmetric has failed: %v", err)
-			}
-			if header.EncryptionAlgo != algo {
-				t.Fatalf("algorithm = %d, want %d", header.EncryptionAlgo, algo)
-			}
-			if header.ChunkSize != chunkSize {
-				t.Fatalf("chunk size = %d, want %d (the one of the source)", header.ChunkSize, chunkSize)
-			}
-		})
+	// only the stanza changes
+	if !bytes.Equal(rekeyed[:stanzaOffset], source[:stanzaOffset]) {
+		t.Fatal("the fixed part of the header has changed")
+	}
+	if bytes.Equal(rekeyed[stanzaOffset:headerSize], source[stanzaOffset:headerSize]) {
+		t.Fatal("the stanza has not changed")
+	}
+	if !bytes.Equal(rekeyed[headerSize:], source[headerSize:]) {
+		t.Fatal("the chunks have changed")
 	}
 }
 
 func TestRekeySymmetricErrors(t *testing.T) {
-	source := encrypt(t, format.AlgoXChaCha20Poly1305, bytes.Repeat(testMessage, 200), core.Options{ChunkSize: 1024})
+	source := encrypt(t, format.AlgoXChaCha20Poly1305, testMessage, core.Options{})
 
-	tampered := bytes.Clone(source)
-	tampered[len(tampered)/2] ^= 0xff
+	with := func(mutate func(b []byte)) []byte {
+		b := bytes.Clone(source)
+		mutate(b)
+		return b
+	}
 
 	tests := []struct {
 		name       string
 		data       []byte
 		passphrase []byte
+		profile    uint8
+		want       error
 	}{
-		{"wrong old passphrase", source, []byte("wrong passphrase")},
-		{"tampered source", tampered, testPassphrase},
-		{"truncated source", source[:len(source)-1], testPassphrase},
+		{"wrong old passphrase", source, []byte("wrong passphrase"), encryption.KDFProfileArgon2idDefault, encryption.ErrDecryptionFailed},
+		{"tampered wrapped key", with(func(b []byte) { b[wrappedOffset] ^= 0xff }), testPassphrase, encryption.KDFProfileArgon2idDefault, encryption.ErrDecryptionFailed},
+		{"tampered commitment", with(func(b []byte) { b[commitmentOffset] ^= 0xff }), testPassphrase, encryption.KDFProfileArgon2idDefault, encryption.ErrDecryptionFailed},
+		{"unknown profile", source, testPassphrase, 0xff, encryption.ErrUnknownKDFProfile},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := rekey(tt.data, tt.passphrase, format.AlgoXChaCha20Poly1305, core.Options{Workers: 4})
-			if !errors.Is(err, encryption.ErrDecryptionFailed) {
-				t.Fatalf("RekeySymmetric = %v, want %v", err, encryption.ErrDecryptionFailed)
+			out, err := rekey(tt.data, tt.passphrase, tt.profile)
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("RekeySymmetric = %v, want %v", err, tt.want)
+			}
+			if len(out) != 0 {
+				t.Fatalf("%d bytes were written despite the error", len(out))
 			}
 		})
 	}
 }
 
-func TestRekeySymmetricInvalidOptions(t *testing.T) {
+// The chunks are copied without being checked: a corrupted one is found at decryption.
+func TestRekeySymmetricCopiesTamperedChunks(t *testing.T) {
 	source := encrypt(t, format.AlgoXChaCha20Poly1305, testMessage, core.Options{})
+	source[len(source)-1] ^= 0xff
 
-	r := bytes.NewReader(source)
-	header, err := core.ReadHeaderSymmetric(r)
+	rekeyed, err := rekey(source, testPassphrase, encryption.KDFProfileArgon2idDefault)
 	if err != nil {
-		t.Fatalf("ReadHeaderSymmetric has failed: %v", err)
+		t.Fatalf("RekeySymmetric has failed: %v", err)
 	}
 
-	var out bytes.Buffer
-	err = core.RekeySymmetric(header, r, &out, testPassphrase, newPassphrase, format.AlgoAESGCM, 0xff, core.Options{})
-	if !errors.Is(err, encryption.ErrUnknownKDFProfile) {
-		t.Fatalf("RekeySymmetric = %v, want %v", err, encryption.ErrUnknownKDFProfile)
+	if _, err := decrypt(rekeyed, newPassphrase, 1); !errors.Is(err, encryption.ErrDecryptionFailed) {
+		t.Fatalf("DecryptSymmetric = %v, want %v", err, encryption.ErrDecryptionFailed)
 	}
 }

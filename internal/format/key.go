@@ -10,7 +10,7 @@ type PublicKey struct {
 	Magic   [6]byte
 	Version uint8
 	Mode    uint8
-	Public  [encryption.PublicKeySize]byte // X25519 public key
+	Public  [encryption.HybridPublicKeySize]byte // ML-KEM-768 + X25519 public key
 }
 
 // PrivateKeyHeader is everything of a private key file before the encrypted key
@@ -30,7 +30,7 @@ type PrivateKeyHeader struct {
 const PrivateKeyHeaderSize = 57
 
 // PrivateKey is the binary form of a private key file (57 + 48 bytes):
-// the header, then the X25519 private key encrypted with a key derived from the
+// the header, then the private key seed encrypted with a key derived from the
 // passphrase (32 bytes of key and the 16-byte Poly1305 tag).
 type PrivateKey struct {
 	Header  PrivateKeyHeader

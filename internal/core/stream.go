@@ -53,11 +53,7 @@ type streamParams struct {
 	noncePrefix []byte
 }
 
-func symmetricStream(h format.HeaderSymmetric) streamParams {
-	return streamParams{aad: h.Bytes(), chunkSize: int(h.ChunkSize), noncePrefix: h.NoncePrefix[:]}
-}
-
-func asymmetricStream(h format.HeaderAsymmetric) streamParams {
+func fileStream(h format.FileHeader) streamParams {
 	return streamParams{aad: h.Bytes(), chunkSize: int(h.ChunkSize), noncePrefix: h.NoncePrefix[:]}
 }
 

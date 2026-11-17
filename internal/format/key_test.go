@@ -61,7 +61,7 @@ func TestPublicKeyWriteReadRoundTrip(t *testing.T) {
 		Magic:   format.MagicBytes,
 		Version: format.Version,
 		Mode:    format.ModePublicKey,
-		Public:  [encryption.PublicKeySize]byte(encryption.GenerateRandom(encryption.PublicKeySize)),
+		Public:  [encryption.HybridPublicKeySize]byte(encryption.GenerateRandom(encryption.HybridPublicKeySize)),
 	}
 
 	var buf bytes.Buffer

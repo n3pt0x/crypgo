@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"bufio"
-	"crypto/ecdh"
+	"crypto/hpke"
 	"errors"
 	"fmt"
 	"io"
@@ -49,7 +49,7 @@ func readKey(br *bufio.Reader, label armor.Label, key io.ReaderFrom) error {
 	return nil
 }
 
-func readPublicKey(path string) (*ecdh.PublicKey, error) {
+func readPublicKey(path string) (hpke.PublicKey, error) {
 	var key format.PublicKey
 	if err := readKeyFile(path, armor.PublicKey, &key); err != nil {
 		return nil, err

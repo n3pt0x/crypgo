@@ -6,14 +6,15 @@ A small command-line tool to encrypt and decrypt files or messages with a passph
 
 - Encrypts a file or stdin with **XChaCha20-Poly1305** (default) or **AES-256-GCM**.
 - Key derived with **Argon2id**: 256 MiB by default, 1 GiB with `--paranoid`. The parameters are stored in the header, so older files stay readable.
-- **Public key**: `keygen` creates an **X25519** key pair. Anyone with the public key can encrypt for you without a passphrase; only the private key, itself protected by a passphrase, decrypts.
+- **Public key**: `keygen` creates a hybrid post-quantum **ML-KEM-768 + X25519** key pair (X-Wing, through HPKE). Anyone with the public key can encrypt for you without a passphrase; only the private key, itself protected by a passphrase, decrypts.
+- **Several recipients**: one file can be encrypted for up to 32 public keys (`-r` repeated), each of them decrypts it.
 - Authenticated encryption: a wrong passphrase or a modified file is rejected.
 - Streamed in 256 KiB chunks encrypted in parallel (`--workers`), so memory stays flat whatever the file size. Reordered, duplicated or truncated chunks are detected.
 - Hidden passphrase prompt (12 characters minimum, asked twice when encrypting or choosing a new one). Never read from arguments or environment variables.
 - Output is written atomically (temporary file, then rename) with `0600` permissions.
 - **Armor**: `--armor` writes text (base64 or hex) instead of binary, to copy, paste or mail. `decrypt` and `verify` detect it.
-- **Rekey**: changes the passphrase of files in place, and optionally the algorithm or the Argon2id parameters. The plaintext never touches the disk.
-- Passphrases, keys and plaintexts are zeroed after use (best effort: Argon2's working memory and the opened X25519 private key cannot be wiped).
+- **Rekey**: changes the passphrase of files in place, and optionally the Argon2id parameters. Only the header is rewritten, so it is fast even on large files.
+- Passphrases, keys and plaintexts are zeroed after use (best effort: Argon2's working memory and the opened private key, held by Go's `crypto/hpke`, cannot be wiped).
 
 ## Setup
 
@@ -67,9 +68,18 @@ crypgo keygen --paranoid -o alice   # 1 GiB Argon2id to protect the private key
 # Encrypt for the owner of a public key: no passphrase asked
 crypgo encrypt -r alice.pub notes.txt
 
+# Encrypt for several people at once (up to 32): each one decrypts with their own key
+crypgo encrypt -r alice.pub -r bob.pub notes.txt
+
 # Decrypt or check with the private key: asks for its passphrase
 crypgo decrypt -k alice.key notes.txt.crypgo
 crypgo verify -k alice.key notes.txt.crypgo
+
+# Show the fingerprint of a public key, to compare it with its owner by another channel
+crypgo fingerprint alice.pub
+
+# Write the .pub of a private key again (alice.key -> alice.pub)
+crypgo keygen -k alice.key
 ```
 
 ### Several files
@@ -93,15 +103,18 @@ crypgo decrypt -e .asc notes.txt.asc          # -> notes.txt
 
 ### Change the passphrase (rekey)
 
-The files are rewritten in place.
+The files are rewritten in place. Only the header changes: the encrypted chunks are copied as they are.
 
 ```bash
 # Several files at once
 crypgo rekey a.txt.crypgo b.txt.crypgo
 
-# ...and switch the algorithm, harden Argon2id, or write text at the same time
-crypgo rekey --algo aes-gcm --paranoid a.txt.crypgo
+# ...and harden Argon2id, or write text at the same time
+crypgo rekey --paranoid a.txt.crypgo
 crypgo rekey --armor a.txt.crypgo
+
+# Private key files too
+crypgo rekey alice.key
 ```
 
 ### Stdin, stdout and pipes
@@ -136,64 +149,76 @@ Encrypted data is never printed to a terminal, armored text included: use `-o <f
 - Armor is only a text form of the same file, not extra protection. It is about 35 % bigger in base64 and a bit more than twice as big in hex.
 - Armored files keep the `.crypgo` extension by default. Use `-e` (for instance `-e .asc`) to tell them apart, on both sides.
 - `decrypt` and `verify` accept what a copy and paste adds: blank lines, indentation, a byte order mark, Windows line endings, long lines. A missing `END` line means a truncated file, and anything after it is ignored.
-- `rekey` asks for the current passphrase (the same for every file), then the new one twice. A file is replaced only once fully written and authenticated: a failing file stays untouched, but the ones before it are already changed. Stdin is refused.
+- `rekey` asks for the current passphrase (the same for every file), then the new one twice. A wrong passphrase leaves the file untouched, but the files before it are already changed. Stdin is refused.
+- `rekey` checks the passphrase and the header, not the chunks: it copies them without decrypting them, so a corrupted file stays corrupted. Run `verify` for that.
 - A rekeyed file keeps its permissions (not its owner). Symbolic links are followed; other hard links keep the old content.
-- `rekey` keeps each file's algorithm unless `--algo` is given, resets Argon2id to the default unless `--paranoid` is given, and writes an armored file back as binary unless `--armor` is given again.
-- Both key derivations of `rekey` run at once: expect about twice the Argon2id memory (around 512 MiB by default).
+- `rekey` keeps each file's algorithm and chunk size, resets Argon2id to the default unless `--paranoid` is given, and writes an armored file back as binary unless `--armor` is given again. To change the algorithm, decrypt and encrypt again.
 
 ### Public key
 
 - Losing the `.key` file or its passphrase makes every file encrypted for it unreadable.
 - A file encrypted with `-r` does not say who made it: anyone with the public key can create one. Check where a file comes from by other means.
+- The recipients are not named in the file, but their number shows: each one adds 1168 bytes to the header.
+- Any recipient can read the file, and nothing in it tells the others who else can.
 - `keygen` writes the `.key` file with `0600` permissions and the `.pub` file with `0644`, and refuses to overwrite them without `-f`.
 - `--paranoid` is refused with `-r`: no passphrase protects such a file. Use `keygen --paranoid` to harden the private key instead.
 - `rekey` only applies to passphrase files. Passphrase and public-key files can't be decrypted in the same command.
-- X25519 is not post-quantum: a large quantum computer could decrypt public-key files recorded today. The passphrase mode is not affected.
+- The public-key mode is hybrid post-quantum: a file stays safe as long as either ML-KEM-768 or X25519 holds, so a future quantum computer can't decrypt files recorded today. The passphrase mode only relies on 256-bit symmetric keys, which quantum computers don't threaten in practice.
 
 ## File format
 
-All integers are little-endian. A file is a header, 53 bytes with a passphrase or 60 bytes with a public key, then the encrypted chunks.
+All integers are little-endian. A file is a header, then the encrypted chunks. The header is a fixed part of 61 bytes, followed by stanzas: one with a passphrase, one per recipient with public keys.
 
-### Passphrase mode
+Every file gets a random 32-byte **file key**. The chunks are encrypted with a key derived from it, and each stanza holds the file key, encrypted for one way to open the file.
 
-| Offset | Size | Field            | Value                                                      |
-| ------ | ---- | ---------------- | ---------------------------------------------------------- |
-| 0      | 6    | Magic            | `CRYPGO`                                                   |
-| 6      | 1    | Version          | `1`                                                        |
-| 7      | 1    | Mode             | `1` (symmetric)                                            |
-| 8      | 1    | Algorithm        | `1` XChaCha20-Poly1305, `2` AES-256-GCM                    |
-| 9      | 4    | Argon2id memory  | in KiB                                                     |
-| 13     | 4    | Argon2id time    | iterations                                                 |
-| 17     | 1    | Argon2id threads |                                                            |
-| 18     | 16   | Salt             | random                                                     |
-| 34     | 4    | Chunk size       | plaintext bytes per chunk, from 1 B to 4 MiB               |
-| 38     | 15   | Nonce prefix     | random. AES-GCM uses the first 3 bytes, the rest is unused |
+### Fixed part
 
-- The key is Argon2id (version 1.3) of the passphrase and the salt, 32 bytes long.
+| Offset | Size | Field        | Value                                                      |
+| ------ | ---- | ------------ | ---------------------------------------------------------- |
+| 0      | 6    | Magic        | `CRYPGO`                                                   |
+| 6      | 1    | Version      | `1`                                                        |
+| 7      | 1    | Mode         | `1` passphrase, `2` public key                             |
+| 8      | 1    | Algorithm    | `1` XChaCha20-Poly1305, `2` AES-256-GCM                    |
+| 9      | 4    | Chunk size   | plaintext bytes per chunk, from 1 B to 4 MiB               |
+| 13     | 15   | Nonce prefix | random. AES-GCM uses the first 3 bytes, the rest is unused |
+| 28     | 32   | Commitment   | HKDF-SHA256 of the file key                                |
+| 60     | 1    | Stanzas      | `1` in mode 1, `1` to `32` in mode 2                       |
+
+- The chunk key is HKDF-SHA256 of the file key, without salt, with `crypgo v1 payload` as info, 32 bytes long.
+- The commitment is HKDF-SHA256 of the file key, without salt, with `crypgo v1 commitment` as info. Once a stanza gives a file key, it is compared to the commitment (in constant time) before any chunk is decrypted. So every stanza of a file must hold the same file key, and every recipient reads the same plaintext.
+- The stanza count is checked before anything is allocated: a file announcing more is refused.
+
+### Passphrase stanza (mode 1)
+
+One stanza of 97 bytes, so the header is 158 bytes.
+
+| Offset | Size | Field              | Value                       |
+| ------ | ---- | ------------------ | --------------------------- |
+| 61     | 4    | Argon2id memory    | in KiB                      |
+| 65     | 4    | Argon2id time      | iterations                  |
+| 69     | 1    | Argon2id threads   |                             |
+| 70     | 16   | Salt               | random                      |
+| 86     | 24   | Nonce              | random                      |
+| 110    | 48   | Encrypted file key | file key (32) and tag (16)  |
+
+- The file key is sealed with XChaCha20-Poly1305, under the Argon2id (version 1.3) key of the passphrase and the salt, with the first 49 bytes of the stanza as AAD. A wrong passphrase or a modified stanza fails to open, before anything is written.
 - The passphrase is used as the exact UTF-8 bytes typed, without Unicode normalization.
 - The Argon2id parameters are checked before the passphrase is asked: memory up to 1 GiB, time up to 10, 1 to 64 threads. A file asking for more is refused.
+- `rekey` replaces this stanza only: the file key, so the fixed part and the chunks, stay the same.
 
-### Public-key mode
+### Recipient stanzas (mode 2)
 
-| Offset | Size | Field            | Value                                                      |
-| ------ | ---- | ---------------- | ---------------------------------------------------------- |
-| 0      | 6    | Magic            | `CRYPGO`                                                   |
-| 6      | 1    | Version          | `1`                                                        |
-| 7      | 1    | Mode             | `2` (public key)                                           |
-| 8      | 1    | Algorithm        | `1` XChaCha20-Poly1305, `2` AES-256-GCM                    |
-| 9      | 4    | Chunk size       | plaintext bytes per chunk, from 1 B to 4 MiB               |
-| 13     | 15   | Nonce prefix     | random. AES-GCM uses the first 3 bytes, the rest is unused |
-| 28     | 32   | Ephemeral key    | X25519 public key, new for every file                      |
+One stanza of 1168 bytes per recipient, so the header is 61 + 1168 × n bytes.
 
-- Every file gets a new ephemeral X25519 key pair. Its private half does an X25519 exchange with the recipient's public key, then is thrown away.
-- The key is HKDF-SHA256 of the shared secret, with the ephemeral then the recipient public key as salt and `crypgo v1 file key` as info, 32 bytes long.
-- To decrypt, the recipient's private key does the same exchange with the ephemeral public key of the header.
+- Each stanza is the file key sealed with HPKE (RFC 9180, base mode) for one recipient: KEM `MLKEM768-X25519` (X-Wing), KDF HKDF-SHA256, AEAD ChaCha20-Poly1305, info `crypgo v1 stanza`.
+- A stanza is the encapsulated key (1120 bytes: the ML-KEM-768 ciphertext and an ephemeral X25519 key, new for every stanza) followed by the encrypted file key (32) and its tag (16).
+- The stanzas don't name their recipient. To decrypt, the private key tries each one; the first that opens gives the file key. If none opens, the file is not for this key.
 
 ### Chunks (both modes)
 
 - The plaintext is cut into chunks of the header's chunk size. Only the last one can be shorter, and an empty input gives a single empty chunk. Each chunk is sealed on its own and followed by its 16-byte authentication tag.
-- The nonce of a chunk is the nonce prefix (cut to fit the algorithm: 3 bytes for AES-GCM, 15 for XChaCha20), the chunk index as 8 big-endian bytes, and a final byte that is `1` for the last chunk and `0` otherwise. Each file has its own key, so the nonces never repeat under one key.
-- The whole header is the additional authenticated data (AAD) of every chunk.
+- The nonce of a chunk is the nonce prefix (cut to fit the algorithm: 3 bytes for AES-GCM, 15 for XChaCha20), the chunk index as 8 big-endian bytes, and a final byte that is `1` for the last chunk and `0` otherwise. Each file has its own random file key, so the nonces never repeat under one key.
+- The fixed part of the header (61 bytes) is the additional authenticated data (AAD) of every chunk. The stanzas are not: each one is protected by its own tag, and tied to the file by the commitment.
 - Together, the index, the last-chunk byte and the AAD mean that modified, reordered, duplicated, added or removed chunks, and a modified header, all fail authentication. The number of workers is not part of the format.
 - New modes, algorithms or layouts get a new `Mode`, `Algorithm` or `Version` value.
 
@@ -218,14 +243,14 @@ Encoding: base64
 
 Key files are always armored in base64, with their own label: `CRYPGO PUBLIC KEY` or `CRYPGO PRIVATE KEY`. A key is never taken for a message, nor one kind of key for the other. Nothing may follow the `END` line.
 
-Public key, 40 bytes:
+Public key, 1224 bytes:
 
-| Offset | Size | Field      | Value                |
-| ------ | ---- | ---------- | -------------------- |
-| 0      | 6    | Magic      | `CRYPGO`             |
-| 6      | 1    | Version    | `1`                  |
-| 7      | 1    | Mode       | `3` (public key)     |
-| 8      | 32   | Public key | X25519               |
+| Offset | Size | Field      | Value                                                     |
+| ------ | ---- | ---------- | --------------------------------------------------------- |
+| 0      | 6    | Magic      | `CRYPGO`                                                  |
+| 6      | 1    | Version    | `1`                                                       |
+| 7      | 1    | Mode       | `3` (public key)                                          |
+| 8      | 1216 | Public key | X-Wing: ML-KEM-768 (1184) and X25519 (32) public keys     |
 
 Private key, 105 bytes:
 
@@ -239,9 +264,10 @@ Private key, 105 bytes:
 | 16     | 1    | Argon2id threads |                                              |
 | 17     | 16   | Salt             | random                                       |
 | 33     | 24   | Nonce            | random                                       |
-| 57     | 48   | Encrypted key    | X25519 private key (32) and its tag (16)     |
+| 57     | 48   | Encrypted key    | private key seed (32) and its tag (16)       |
 
-- The X25519 private key is sealed with XChaCha20-Poly1305, under the Argon2id key of the passphrase and the salt, with the first 57 bytes as AAD. A wrong passphrase or a modified file fails to open.
+- The private key is stored as its 32-byte X-Wing seed, from which the ML-KEM-768 and X25519 keys are derived. It is sealed with XChaCha20-Poly1305, under the Argon2id key of the passphrase and the salt, with the first 57 bytes as AAD. A wrong passphrase or a modified file fails to open.
+- The fingerprint is SHA-256 of `crypgo fingerprint` followed by the 1224 bytes of the public key, shown as `SHA256:` and 64 hex digits.
 - `decrypt` refuses key files: their label is not `CRYPGO MESSAGE`, and decoded, their mode `3` or `4` is not a file mode.
 
 ## License

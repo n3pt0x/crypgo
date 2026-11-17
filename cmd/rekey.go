@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"crypto/ecdh"
+	"crypto/hpke"
 	"fmt"
 	"path/filepath"
 
@@ -13,8 +13,6 @@ import (
 )
 
 var (
-	rekeyWorkers  int
-	rekeyAlgo     string
 	rekeyParanoid bool
 	rekeyArmor    string
 )
@@ -24,18 +22,6 @@ var rekeyCmd = &cobra.Command{
 	Short: "Change the passphrase of encrypted files or private key files, in place (they must share the same passphrase)",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := checkWorkers(rekeyWorkers); err != nil {
-			return err
-		}
-
-		var algo uint8
-		if rekeyAlgo != "" {
-			var err error
-			if algo, err = parseAlgo(rekeyAlgo); err != nil {
-				return err
-			}
-		}
-
 		enc, err := parseArmor(cmd, rekeyArmor)
 		if err != nil {
 			return err
@@ -60,10 +46,8 @@ var rekeyCmd = &cobra.Command{
 		}
 
 		if isKeys {
-			for _, name := range []string{"algo", "armor", "workers"} {
-				if cmd.Flags().Changed(name) {
-					return ErrRekeyKeyFlags
-				}
+			if cmd.Flags().Changed("armor") {
+				return ErrRekeyKeyFlags
 			}
 			return rekeyPrivateKeys(cmd, ins, profile)
 		}
@@ -75,7 +59,7 @@ var rekeyCmd = &cobra.Command{
 
 		// a file encrypted with a public key has no passphrase to change
 		for key, h := range headers {
-			if h.mode != format.Symmetric {
+			if h.Mode != format.Symmetric {
 				return ins[key].wrap(ErrRekeyAsymmetric)
 			}
 		}
@@ -94,12 +78,7 @@ var rekeyCmd = &cobra.Command{
 		defer encryption.ZeroBytes(newPassphrase)
 
 		for key, in := range ins {
-			fileAlgo := algo
-			if rekeyAlgo == "" {
-				fileAlgo = headers[key].sym.EncryptionAlgo
-			}
-
-			if err := rekey(in, headers[key].sym, oldPassphrase, newPassphrase, fileAlgo, profile, enc, rekeyWorkers); err != nil {
+			if err := rekey(in, headers[key], oldPassphrase, newPassphrase, profile, enc); err != nil {
 				return in.wrap(err)
 			}
 
@@ -111,14 +90,12 @@ var rekeyCmd = &cobra.Command{
 }
 
 func init() {
-	rekeyCmd.Flags().IntVarP(&rekeyWorkers, "workers", "w", defaultWorkers(), "chunks re-encrypted in parallel")
-	rekeyCmd.Flags().StringVarP(&rekeyAlgo, "algo", "a", "", "algorithm: aes-gcm | xchacha20 (default: the one of each file)")
 	rekeyCmd.Flags().BoolVar(&rekeyParanoid, "paranoid", false, "use hardened Argon2id parameters (1 GiB, t=10, p=4)")
 	bindArmor(rekeyCmd, &rekeyArmor, "write text instead of binary: --armor (base64) | --armor=hex (an armored file is written as binary without it)")
 	rootCmd.AddCommand(rekeyCmd)
 }
 
-func rekey(in *input, header format.HeaderSymmetric, oldPassphrase, newPassphrase []byte, algo, profile uint8, enc armor.Encoding, workers int) error {
+func rekey(in *input, header format.Header, oldPassphrase, newPassphrase []byte, profile uint8, enc armor.Encoding) error {
 	// a symbolic link must not be replaced by a file: rekey the file it points to
 	path, err := filepath.EvalSymlinks(in.file.Name())
 	if err != nil {
@@ -146,7 +123,7 @@ func rekey(in *input, header format.HeaderSymmetric, oldPassphrase, newPassphras
 		return err
 	}
 
-	if err := core.RekeySymmetric(header, in, w, oldPassphrase, newPassphrase, algo, profile, core.Options{Workers: workers}); err != nil {
+	if err := core.RekeySymmetric(header, in, w, oldPassphrase, newPassphrase, profile); err != nil {
 		return err
 	}
 
@@ -195,7 +172,7 @@ func rekeyPrivateKeys(cmd *cobra.Command, ins []*input, profile uint8) error {
 	defer encryption.ZeroBytes(oldPassphrase)
 
 	// opened before asking for the new passphrase: a wrong one fails at once
-	privs := make([]*ecdh.PrivateKey, 0, len(keys))
+	privs := make([]hpke.PrivateKey, 0, len(keys))
 	for i, key := range keys {
 		priv, err := core.OpenPrivateKey(key, oldPassphrase)
 		if err != nil {

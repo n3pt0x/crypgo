@@ -2,8 +2,7 @@ package core_test
 
 import (
 	"bytes"
-	"crypto/ecdh"
-	"encoding/binary"
+	"crypto/hpke"
 	"errors"
 	"testing"
 
@@ -12,32 +11,37 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-func newTestKey(t *testing.T) *ecdh.PrivateKey {
+func newTestKey(t *testing.T) hpke.PrivateKey {
 	t.Helper()
 
-	priv, err := encryption.GenerateX25519()
+	priv, err := encryption.GenerateHybrid()
 	if err != nil {
-		t.Fatalf("GenerateX25519 has failed: %v", err)
+		t.Fatalf("GenerateHybrid has failed: %v", err)
 	}
 
 	return priv
 }
 
-func encryptAsym(t *testing.T, recipient *ecdh.PublicKey, algo uint8, plaintext []byte, opts core.Options) []byte {
+// asymHeaderSize is the size of the header of a file encrypted for n recipients.
+func asymHeaderSize(n int) int {
+	return stanzaOffset + n*encryption.StanzaSize
+}
+
+func encryptAsym(t *testing.T, recipients []hpke.PublicKey, algo uint8, plaintext []byte, opts core.Options) []byte {
 	t.Helper()
 
 	var out bytes.Buffer
-	if err := core.EncryptAsymmetric(bytes.NewReader(plaintext), &out, recipient, algo, opts); err != nil {
+	if err := core.EncryptAsymmetric(bytes.NewReader(plaintext), &out, recipients, algo, opts); err != nil {
 		t.Fatalf("EncryptAsymmetric has failed: %v", err)
 	}
 
 	return out.Bytes()
 }
 
-func decryptAsym(data []byte, priv *ecdh.PrivateKey, workers int) ([]byte, error) {
+func decryptAsym(data []byte, priv hpke.PrivateKey, workers int) ([]byte, error) {
 	r := bytes.NewReader(data)
 
-	header, err := core.ReadHeaderAsymmetric(r)
+	header, err := core.ReadHeader(r)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +62,9 @@ func TestAsymmetricRoundTrip(t *testing.T) {
 
 	for name, algo := range algos {
 		t.Run(name, func(t *testing.T) {
-			plaintext, err := decryptAsym(encryptAsym(t, priv.PublicKey(), algo, testMessage, core.Options{}), priv, 1)
+			data := encryptAsym(t, []hpke.PublicKey{priv.PublicKey()}, algo, testMessage, core.Options{})
+
+			plaintext, err := decryptAsym(data, priv, 1)
 			if err != nil {
 				t.Fatalf("DecryptAsymmetric has failed: %v", err)
 			}
@@ -73,7 +79,7 @@ func TestAsymmetricRoundTripChunksAndWorkers(t *testing.T) {
 	priv := newTestKey(t)
 	message := bytes.Repeat(testMessage, 20) // 540 bytes, 17 chunks of 32 bytes
 
-	data := encryptAsym(t, priv.PublicKey(), format.AlgoXChaCha20Poly1305, message, core.Options{Workers: 4, ChunkSize: 32})
+	data := encryptAsym(t, []hpke.PublicKey{priv.PublicKey()}, format.AlgoXChaCha20Poly1305, message, core.Options{Workers: 4, ChunkSize: 32})
 
 	for _, workers := range []int{1, 4} {
 		plaintext, err := decryptAsym(data, priv, workers)
@@ -86,26 +92,68 @@ func TestAsymmetricRoundTripChunksAndWorkers(t *testing.T) {
 	}
 }
 
-// Each file gets its own ephemeral key, so the same message to the same
-// recipient never gives the same output.
-func TestEncryptAsymmetricEphemeralKeyIsFresh(t *testing.T) {
-	priv := newTestKey(t)
-	headerSize := binary.Size(format.HeaderAsymmetric{})
-	ephOffset := headerSize - encryption.PublicKeySize
+func TestAsymmetricMultipleRecipients(t *testing.T) {
+	a, b, c := newTestKey(t), newTestKey(t), newTestKey(t)
 
-	a := encryptAsym(t, priv.PublicKey(), format.AlgoAESGCM, testMessage, core.Options{})
-	b := encryptAsym(t, priv.PublicKey(), format.AlgoAESGCM, testMessage, core.Options{})
+	data := encryptAsym(t, []hpke.PublicKey{a.PublicKey(), b.PublicKey()}, format.AlgoXChaCha20Poly1305, testMessage, core.Options{})
 
-	if bytes.Equal(a[ephOffset:headerSize], b[ephOffset:headerSize]) {
-		t.Fatal("two encryptions used the same ephemeral public key")
+	if len(data) < asymHeaderSize(2) || data[stanzaCountOffset] != 2 {
+		t.Fatalf("header does not hold 2 stanzas")
+	}
+
+	for name, priv := range map[string]hpke.PrivateKey{"first recipient": a, "second recipient": b} {
+		plaintext, err := decryptAsym(data, priv, 1)
+		if err != nil {
+			t.Fatalf("%s: DecryptAsymmetric has failed: %v", name, err)
+		}
+		if !bytes.Equal(plaintext, testMessage) {
+			t.Fatalf("%s: plaintext = %q, want %q", name, plaintext, testMessage)
+		}
+	}
+
+	if _, err := decryptAsym(data, c, 1); !errors.Is(err, encryption.ErrWrongIdentity) {
+		t.Fatalf("not a recipient: error = %v, want %v", err, encryption.ErrWrongIdentity)
+	}
+}
+
+func TestEncryptAsymmetricRecipientCount(t *testing.T) {
+	pub := newTestKey(t).PublicKey()
+
+	tooMany := make([]hpke.PublicKey, format.MaxRecipients+1)
+	for i := range tooMany {
+		tooMany[i] = pub
+	}
+
+	for name, recipients := range map[string][]hpke.PublicKey{"none": nil, "too many": tooMany} {
+		var out bytes.Buffer
+		err := core.EncryptAsymmetric(bytes.NewReader(testMessage), &out, recipients, format.AlgoAESGCM, core.Options{})
+		if !errors.Is(err, format.ErrInvalidStanzas) {
+			t.Errorf("%s: error = %v, want %v", name, err, format.ErrInvalidStanzas)
+		}
+		if out.Len() != 0 {
+			t.Errorf("%s: %d bytes were written despite the error", name, out.Len())
+		}
+	}
+}
+
+// Two encryptions never give the same stanza.
+func TestEncryptAsymmetricStanzaIsFresh(t *testing.T) {
+	recipients := []hpke.PublicKey{newTestKey(t).PublicKey()}
+	end := asymHeaderSize(1)
+
+	a := encryptAsym(t, recipients, format.AlgoAESGCM, testMessage, core.Options{})
+	b := encryptAsym(t, recipients, format.AlgoAESGCM, testMessage, core.Options{})
+
+	if bytes.Equal(a[stanzaOffset:end], b[stanzaOffset:end]) {
+		t.Fatal("two encryptions produced the same stanza")
 	}
 }
 
 func TestDecryptAsymmetricErrors(t *testing.T) {
 	priv := newTestKey(t)
 	other := newTestKey(t)
-	valid := encryptAsym(t, priv.PublicKey(), format.AlgoAESGCM, testMessage, core.Options{})
-	headerSize := binary.Size(format.HeaderAsymmetric{})
+	valid := encryptAsym(t, []hpke.PublicKey{priv.PublicKey()}, format.AlgoAESGCM, testMessage, core.Options{})
+	headerSize := asymHeaderSize(1)
 
 	with := func(mutate func(b []byte)) []byte {
 		b := bytes.Clone(valid)
@@ -116,17 +164,20 @@ func TestDecryptAsymmetricErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		data []byte
-		priv *ecdh.PrivateKey
+		priv hpke.PrivateKey
 		want error
 	}{
 		{"empty input", nil, priv, format.ErrTruncated},
 		{"header only", valid[:headerSize], priv, format.ErrTruncated},
 		{"bad magic", with(func(b []byte) { b[0] ^= 0xff }), priv, format.ErrInvalidMagic},
+		{"no stanza", with(func(b []byte) { b[stanzaCountOffset] = 0 }), priv, format.ErrInvalidStanzas},
+		{"too many stanzas", with(func(b []byte) { b[stanzaCountOffset] = format.MaxRecipients + 1 }), priv, format.ErrInvalidStanzas},
 		{"wrong key", valid, other, encryption.ErrWrongIdentity},
 		{"tampered ciphertext", with(func(b []byte) { b[len(b)-1] ^= 0xff }), priv, encryption.ErrWrongIdentity},
 		{"truncated ciphertext", valid[:len(valid)-1], priv, encryption.ErrWrongIdentity},
-		// The ephemeral public key is the last field of the header.
-		{"tampered ephemeral key", with(func(b []byte) { b[headerSize-1] ^= 0x01 }), priv, encryption.ErrWrongIdentity},
+		{"tampered commitment", with(func(b []byte) { b[commitmentOffset] ^= 0xff }), priv, encryption.ErrWrongIdentity},
+		{"tampered stanza", with(func(b []byte) { b[headerSize-1] ^= 0x01 }), priv, encryption.ErrWrongIdentity},
+		{"tampered stanza enc", with(func(b []byte) { b[stanzaOffset] ^= 0x01 }), priv, encryption.ErrWrongIdentity},
 	}
 
 	for _, tt := range tests {

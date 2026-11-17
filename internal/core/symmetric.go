@@ -7,72 +7,83 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo uint8, profile uint8, opts Options) error {
+// EncryptSymmetric encrypts r with a file key sealed under passphrase.
+func EncryptSymmetric(r io.Reader, w io.Writer, passphrase []byte, algo, profile uint8, opts Options) error {
+	fileKey := encryption.GenerateRandom(encryption.KeySize)
+	defer encryption.ZeroBytes(fileKey)
+
+	fileHeader, err := newFileHeader(format.Symmetric, algo, 1, fileKey, opts)
+	if err != nil {
+		return err
+	}
+
+	stanza, err := newPassphraseStanza(fileKey, passphrase, profile)
+	if err != nil {
+		return err
+	}
+
+	header := format.Header{FileHeader: fileHeader, Passphrase: stanza}
+
+	return encryptFile(header, fileKey, r, w, opts.Workers)
+}
+
+// DecryptSymmetric fails before any output on a wrong passphrase.
+func DecryptSymmetric(header format.Header, r io.Reader, w io.Writer, passphrase []byte, workers int) error {
+	if err := header.IsValid(); err != nil {
+		return err
+	}
+
+	if header.Mode != format.Symmetric {
+		return format.ErrInvalidMode
+	}
+
+	fileKey, err := openPassphraseStanza(header.Passphrase, passphrase)
+	if err != nil {
+		return err
+	}
+	defer encryption.ZeroBytes(fileKey)
+
+	return decryptFile(header, fileKey, r, w, workers)
+}
+
+// newPassphraseStanza seals fileKey under passphrase.
+func newPassphraseStanza(fileKey, passphrase []byte, profile uint8) (format.PassphraseStanza, error) {
 	kdfParams, ok := encryption.KDFProfileParams(profile)
 	if !ok {
-		return encryption.ErrUnknownKDFProfile
+		return format.PassphraseStanza{}, encryption.ErrUnknownKDFProfile
 	}
 
-	header := format.HeaderSymmetric{
-		Magic:          format.MagicBytes,
-		Version:        format.Version,
-		Mode:           format.Symmetric,
-		EncryptionAlgo: algo,
-		KDFMemory:      kdfParams.Memory,
-		KDFTime:        kdfParams.Time,
-		KDFThreads:     kdfParams.Threads,
-		Salt:           [encryption.SaltSize]byte(encryption.GenerateSalt()),
-		ChunkSize:      opts.chunkSize(),
-		NoncePrefix:    [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix()),
+	// complete before sealing, since it is the AAD
+	s := format.PassphraseStanza{
+		KDFMemory:  kdfParams.Memory,
+		KDFTime:    kdfParams.Time,
+		KDFThreads: kdfParams.Threads,
+		Salt:       [encryption.SaltSize]byte(encryption.GenerateSalt()),
+		Nonce:      [encryption.NonceSizeXChaCha20Poly1305]byte(encryption.GenerateRandom(encryption.NonceSizeXChaCha20Poly1305)),
 	}
 
-	if err := header.IsValid(); err != nil {
-		return err
+	if err := s.IsValid(); err != nil {
+		return format.PassphraseStanza{}, err
 	}
 
-	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
-	defer encryption.ZeroBytes(key)
-
-	aead, err := newAEAD(algo, key)
+	wrapped, err := encryption.SealPassphrase(passphrase, kdfParams, s.Salt[:], s.Nonce[:], fileKey, s.AAD())
 	if err != nil {
-		return err
+		return format.PassphraseStanza{}, err
 	}
 
-	if _, err := header.WriteTo(w); err != nil {
-		return err
-	}
+	s.Wrapped = [encryption.WrappedFileKeySize]byte(wrapped)
 
-	return sealStream(aead, symmetricStream(header), r, w, max(opts.Workers, 1))
+	return s, nil
 }
 
-func ReadHeaderSymmetric(r io.Reader) (format.HeaderSymmetric, error) {
-	var header format.HeaderSymmetric
-
-	if _, err := header.ReadFrom(r); err != nil {
-		return header, err
-	}
-
-	if err := header.IsValid(); err != nil {
-		return header, err
-	}
-
-	return header, nil
-}
-
-func DecryptSymmetric(header format.HeaderSymmetric, r io.Reader, w io.Writer, passphrase []byte, workers int) error {
+// openPassphraseStanza returns the file key sealed in s.
+func openPassphraseStanza(s format.PassphraseStanza, passphrase []byte) ([]byte, error) {
 	// the KDF parameters come from the file: bounded before any work
-	if err := header.IsValid(); err != nil {
-		return err
+	if err := s.IsValid(); err != nil {
+		return nil, err
 	}
 
-	kdfParams := encryption.Argon2Params{Time: header.KDFTime, Memory: header.KDFMemory, Threads: header.KDFThreads}
-	key := encryption.DerivedKeyArgon2IDWithParams(passphrase, header.Salt[:], kdfParams)
-	defer encryption.ZeroBytes(key)
+	kdfParams := encryption.Argon2Params{Memory: s.KDFMemory, Time: s.KDFTime, Threads: s.KDFThreads}
 
-	aead, err := newAEAD(header.EncryptionAlgo, key)
-	if err != nil {
-		return err
-	}
-
-	return openStream(aead, symmetricStream(header), r, w, max(workers, 1))
+	return encryption.OpenPassphrase(passphrase, kdfParams, s.Salt[:], s.Nonce[:], s.Wrapped[:], s.AAD())
 }

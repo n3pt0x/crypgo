@@ -1,122 +1,78 @@
 package core
 
 import (
-	"crypto/ecdh"
-	"crypto/hkdf"
-	"crypto/sha256"
+	"crypto/hpke"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/n3pt0x/crypgo/internal/encryption"
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-const fileKeyInfo = "crypgo v1 file key"
+// EncryptAsymmetric encrypts r for each of recipients.
+func EncryptAsymmetric(r io.Reader, w io.Writer, recipients []hpke.PublicKey, algo uint8, opts Options) error {
+	fileKey := encryption.GenerateRandom(encryption.KeySize)
+	defer encryption.ZeroBytes(fileKey)
 
-// deriveFileKey turns the X25519 shared secret into the file key.
-// Both public keys go in the salt so the key is bound to this exchange.
-// Encrypt and decrypt must call it with the same arguments in the same order.
-func deriveFileKey(shared, ephPub, recipientPub []byte) ([]byte, error) {
-	salt := make([]byte, 0, len(ephPub)+len(recipientPub))
-	salt = append(salt, ephPub...)
-	salt = append(salt, recipientPub...)
-
-	return hkdf.Key(sha256.New, shared, salt, fileKeyInfo, encryption.KeySize)
-}
-
-func EncryptAsymmetric(r io.Reader, w io.Writer, recipient *ecdh.PublicKey, algo uint8, opts Options) error {
-	eph, err := encryption.GenerateX25519()
+	// checks the number of recipients before any work
+	fileHeader, err := newFileHeader(format.Asymmetric, algo, len(recipients), fileKey, opts)
 	if err != nil {
 		return err
 	}
 
-	shared, err := eph.ECDH(recipient)
-	if err != nil {
-		return fmt.Errorf("recipient public key: %w", err)
+	stanzas := make([][encryption.StanzaSize]byte, len(recipients))
+	for i, recipient := range recipients {
+		stanza, err := encryption.WrapFileKey(recipient, fileKey)
+		if err != nil {
+			return err
+		}
+		stanzas[i] = [encryption.StanzaSize]byte(stanza)
 	}
-	defer encryption.ZeroBytes(shared)
 
-	ephPub := eph.PublicKey().Bytes()
+	header := format.Header{FileHeader: fileHeader, Recipients: stanzas}
 
-	fileKey, err := deriveFileKey(shared, ephPub, recipient.Bytes())
+	return encryptFile(header, fileKey, r, w, opts.Workers)
+}
+
+// DecryptAsymmetric decrypts r with priv, if one of the stanzas is for it.
+func DecryptAsymmetric(header format.Header, r io.Reader, w io.Writer, priv hpke.PrivateKey, workers int) error {
+	if err := header.IsValid(); err != nil {
+		return err
+	}
+
+	if header.Mode != format.Asymmetric {
+		return format.ErrInvalidMode
+	}
+
+	fileKey, err := openRecipientStanzas(header.Recipients, priv)
 	if err != nil {
 		return err
 	}
 	defer encryption.ZeroBytes(fileKey)
 
-	header := format.HeaderAsymmetric{
-		Magic:           format.MagicBytes,
-		Version:         format.Version,
-		Mode:            format.Asymmetric,
-		EncryptionAlgo:  algo,
-		ChunkSize:       opts.chunkSize(),
-		NoncePrefix:     [encryption.NoncePrefixSize]byte(encryption.GenerateNoncePrefix()),
-		EphemeralPublic: [encryption.PublicKeySize]byte(ephPub),
-	}
-
-	if err := header.IsValid(); err != nil {
-		return err
-	}
-
-	aead, err := newAEAD(algo, fileKey)
-	if err != nil {
-		return err
-	}
-
-	if _, err := header.WriteTo(w); err != nil {
-		return err
-	}
-
-	return sealStream(aead, asymmetricStream(header), r, w, max(opts.Workers, 1))
-}
-
-func ReadHeaderAsymmetric(r io.Reader) (format.HeaderAsymmetric, error) {
-	var header format.HeaderAsymmetric
-
-	if _, err := header.ReadFrom(r); err != nil {
-		return header, err
-	}
-
-	if err := header.IsValid(); err != nil {
-		return header, err
-	}
-
-	return header, nil
-}
-
-// DecryptAsymmetric redoes the exchange from the other side:
-// our private key with the ephemeral public key stored in the header.
-func DecryptAsymmetric(header format.HeaderAsymmetric, r io.Reader, w io.Writer, priv *ecdh.PrivateKey, workers int) error {
-	if err := header.IsValid(); err != nil {
-		return err
-	}
-
-	ephPub, err := encryption.ParseX25519Public(header.EphemeralPublic[:])
-	if err != nil {
-		return err
-	}
-
-	shared, err := priv.ECDH(ephPub)
-	if err != nil {
-		return fmt.Errorf("ephemeral public key: %w", err)
-	}
-	defer encryption.ZeroBytes(shared)
-
-	fileKey, err := deriveFileKey(shared, header.EphemeralPublic[:], priv.PublicKey().Bytes())
-	if err != nil {
-		return err
-	}
-	defer encryption.ZeroBytes(fileKey)
-
-	aead, err := newAEAD(header.EncryptionAlgo, fileKey)
-	if err != nil {
-		return err
-	}
-
-	err = openStream(aead, asymmetricStream(header), r, w, max(workers, 1))
+	err = decryptFile(header, fileKey, r, w, workers)
 	if errors.Is(err, encryption.ErrDecryptionFailed) {
 		return encryption.ErrWrongIdentity
 	}
 	return err
+}
+
+// openRecipientStanzas returns the file key from the first stanza priv opens.
+func openRecipientStanzas(stanzas [][encryption.StanzaSize]byte, priv hpke.PrivateKey) ([]byte, error) {
+	for i := range stanzas {
+		fileKey, err := encryption.UnwrapFileKey(priv, stanzas[i][:])
+		if err != nil {
+			continue
+		}
+
+		// a stanza sealed by someone else may hold a key of another size
+		if len(fileKey) != encryption.KeySize {
+			encryption.ZeroBytes(fileKey)
+			continue
+		}
+
+		return fileKey, nil
+	}
+
+	return nil, encryption.ErrWrongIdentity
 }

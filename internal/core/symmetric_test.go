@@ -11,8 +11,16 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-// saltOffset is where the salt starts in the header (see the file format in the README).
-const saltOffset = 18
+// Offsets in the header of a passphrase file (see the file format in the README).
+const (
+	noncePrefixOffset = 13
+	commitmentOffset  = 28
+	stanzaCountOffset = 60
+	stanzaOffset      = 61
+	saltOffset        = 70
+	wrappedOffset     = 110
+	headerSize        = 158
+)
 
 var (
 	testPassphrase = []byte("correct horse battery")
@@ -34,7 +42,7 @@ func encrypt(t *testing.T, algo uint8, plaintext []byte, opts core.Options) []by
 func decrypt(data []byte, passphrase []byte, workers int) ([]byte, error) {
 	r := bytes.NewReader(data)
 
-	header, err := core.ReadHeaderSymmetric(r)
+	header, err := core.ReadHeader(r)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +113,7 @@ func TestEncryptSymmetricInvalidOptions(t *testing.T) {
 
 func TestDecryptSymmetricErrors(t *testing.T) {
 	valid := encrypt(t, format.AlgoAESGCM, testMessage, core.Options{})
-	headerSize := binary.Size(format.HeaderSymmetric{})
+	other := encrypt(t, format.AlgoAESGCM, testMessage, core.Options{})
 
 	with := func(mutate func(b []byte)) []byte {
 		b := bytes.Clone(valid)
@@ -123,12 +131,17 @@ func TestDecryptSymmetricErrors(t *testing.T) {
 		{"header only", valid[:headerSize], testPassphrase, format.ErrTruncated},
 		{"shorter than a tag", valid[:headerSize+encryption.GCMTagSize-1], testPassphrase, format.ErrTruncated},
 		{"bad magic", with(func(b []byte) { b[0] ^= 0xff }), testPassphrase, format.ErrInvalidMagic},
+		{"two stanzas", with(func(b []byte) { b[stanzaCountOffset] = 2 }), testPassphrase, format.ErrInvalidStanzas},
 		{"wrong passphrase", valid, []byte("wrong passphrase"), encryption.ErrDecryptionFailed},
 		{"tampered ciphertext", with(func(b []byte) { b[len(b)-1] ^= 0xff }), testPassphrase, encryption.ErrDecryptionFailed},
 		{"truncated ciphertext", valid[:len(valid)-1], testPassphrase, encryption.ErrDecryptionFailed},
 		{"tampered salt", with(func(b []byte) { b[saltOffset] ^= 0xff }), testPassphrase, encryption.ErrDecryptionFailed},
+		{"tampered wrapped key", with(func(b []byte) { b[wrappedOffset] ^= 0xff }), testPassphrase, encryption.ErrDecryptionFailed},
+		{"tampered commitment", with(func(b []byte) { b[commitmentOffset] ^= 0xff }), testPassphrase, encryption.ErrDecryptionFailed},
+		// the stanza of another file opens, but gives a file key the commitment refuses
+		{"stanza of another file", with(func(b []byte) { copy(b[stanzaOffset:headerSize], other[stanzaOffset:headerSize]) }), testPassphrase, encryption.ErrDecryptionFailed},
 		// With AES-GCM only the first 3 prefix bytes are part of the nonce: the others are only covered by the AAD.
-		{"tampered unused nonce byte", with(func(b []byte) { b[headerSize-1] ^= 0xff }), testPassphrase, encryption.ErrDecryptionFailed},
+		{"tampered unused nonce byte", with(func(b []byte) { b[noncePrefixOffset+encryption.NoncePrefixSize-1] ^= 0xff }), testPassphrase, encryption.ErrDecryptionFailed},
 	}
 
 	for _, tt := range tests {
@@ -141,5 +154,14 @@ func TestDecryptSymmetricErrors(t *testing.T) {
 				t.Fatalf("plaintext = %q, want nothing on error", plaintext)
 			}
 		})
+	}
+}
+
+func TestHeaderOffsets(t *testing.T) {
+	if got := binary.Size(format.FileHeader{}) + binary.Size(format.PassphraseStanza{}); got != headerSize {
+		t.Fatalf("header size = %d, want %d", got, headerSize)
+	}
+	if got := binary.Size(format.FileHeader{}); got != stanzaOffset {
+		t.Fatalf("stanza offset = %d, want %d", got, stanzaOffset)
 	}
 }

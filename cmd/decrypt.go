@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"crypto/ecdh"
+	"crypto/hpke"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -131,7 +131,7 @@ func decryptDefaultPath(args []string, extension string) []string {
 	return out
 }
 
-type openFunc func(h fileHeader, r io.Reader, w io.Writer) error
+type openFunc func(h format.Header, r io.Reader, w io.Writer) error
 
 // newOpener asks for what files of mode need, the passphrase or the private key
 // at keyPath and its passphrase, and returns the function that decrypts them.
@@ -180,19 +180,19 @@ func newOpener(mode uint8, keyPath string, workers int) (open openFunc, wipe fun
 
 // symmetricOpen decrypts with a key derived from passphrase.
 func symmetricOpen(passphrase []byte, workers int) openFunc {
-	return func(h fileHeader, r io.Reader, w io.Writer) error {
-		return core.DecryptSymmetric(h.sym, r, w, passphrase, workers)
+	return func(h format.Header, r io.Reader, w io.Writer) error {
+		return core.DecryptSymmetric(h, r, w, passphrase, workers)
 	}
 }
 
 // asymmetricOpen decrypts files encrypted for the public key of priv.
-func asymmetricOpen(priv *ecdh.PrivateKey, workers int) openFunc {
-	return func(h fileHeader, r io.Reader, w io.Writer) error {
-		return core.DecryptAsymmetric(h.asym, r, w, priv, workers)
+func asymmetricOpen(priv hpke.PrivateKey, workers int) openFunc {
+	return func(h format.Header, r io.Reader, w io.Writer) error {
+		return core.DecryptAsymmetric(h, r, w, priv, workers)
 	}
 }
 
-func decrypt(in *input, header fileHeader, dest destination, open openFunc) error {
+func decrypt(in *input, header format.Header, dest destination, open openFunc) error {
 	out, err := dest.create()
 	if err != nil {
 		return err
