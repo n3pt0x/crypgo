@@ -48,7 +48,7 @@ func poolSize(workers int) int {
 
 // streamParams is what the chunk stream needs from a file header, whatever its mode.
 type streamParams struct {
-	aad         []byte // the whole header, authenticated with every chunk
+	aad         []byte // the fixed part of the header, authenticated with every chunk
 	chunkSize   int    // plaintext bytes per chunk
 	noncePrefix []byte
 }
@@ -57,8 +57,7 @@ func fileStream(h format.FileHeader) streamParams {
 	return streamParams{aad: h.Bytes(), chunkSize: int(h.ChunkSize), noncePrefix: h.NoncePrefix[:]}
 }
 
-// sealStream encrypts r to w chunk by chunk. The header is the additional
-// authenticated data of every chunk.
+// sealStream encrypts r to w chunk by chunk, with p.aad as the AAD of every chunk.
 func sealStream(aead cipher.AEAD, p streamParams, r io.Reader, w io.Writer, workers int) error {
 	aad := p.aad
 	size := p.chunkSize

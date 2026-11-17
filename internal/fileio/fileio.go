@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 )
@@ -43,10 +44,10 @@ func NewAtomicWriter(path string) (*AtomicWriter, error) {
 	signal.Notify(a.signals, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		select {
-		case <-a.signals:
+		case sig := <-a.signals:
 			a.f.Close()
 			os.Remove(a.tmp)
-			os.Exit(130)
+			os.Exit(exitCode(sig))
 		case <-a.done:
 		}
 	}()
@@ -89,7 +90,30 @@ func (a *AtomicWriter) Commit() error {
 		return err
 	}
 
+	syncDir(filepath.Dir(a.path))
 	return nil
+}
+
+// syncDir flushes the rename to disk. Best effort: the file is already in place.
+func syncDir(dir string) {
+	if runtime.GOOS == "windows" {
+		return // a directory can't be synced on Windows
+	}
+
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	d.Sync()
+	d.Close()
+}
+
+// exitCode is the shell convention for a process killed by sig: 128 + its number.
+func exitCode(sig os.Signal) int {
+	if sig == syscall.SIGTERM {
+		return 143
+	}
+	return 130 // SIGINT
 }
 
 // Abort discards everything written. It is safe to call after Commit.

@@ -141,6 +141,7 @@ Encrypted data is never printed to a terminal, armored text included: use `-o <f
 ## Good to know
 
 - There is no way to recover a lost passphrase.
+- Empty files, and an empty stdin, are skipped with a warning: there is nothing to encrypt or decrypt in them.
 - The passphrase is read from the terminal even when data is piped (`/dev/tty`, or the console on Windows).
 - Output goes to a temporary file, renamed once everything is done. Ctrl-C and SIGTERM remove it; `SIGKILL` or a power loss can leave a `.crypgo-*.tmp` file next to the output.
 - Decrypting to stdout writes each chunk as soon as it is authenticated, so a corrupted input fails after the first chunks were printed. Decrypting to a file never leaves a partial result.
@@ -149,7 +150,7 @@ Encrypted data is never printed to a terminal, armored text included: use `-o <f
 - Armor is only a text form of the same file, not extra protection. It is about 35 % bigger in base64 and a bit more than twice as big in hex.
 - Armored files keep the `.crypgo` extension by default. Use `-e` (for instance `-e .asc`) to tell them apart, on both sides.
 - `decrypt` and `verify` accept what a copy and paste adds: blank lines, indentation, a byte order mark, Windows line endings, long lines. A missing `END` line means a truncated file, and anything after it is ignored.
-- `rekey` asks for the current passphrase (the same for every file), then the new one twice. A wrong passphrase leaves the file untouched, but the files before it are already changed. Stdin is refused.
+- `rekey` asks for the current passphrase (the same for every file) and checks it on every file before asking for the new one twice: a wrong passphrase changes nothing. The check takes one Argon2id derivation per file. Stdin is refused.
 - `rekey` checks the passphrase and the header, not the chunks: it copies them without decrypting them, so a corrupted file stays corrupted. Run `verify` for that.
 - A rekeyed file keeps its permissions (not its owner). Symbolic links are followed; other hard links keep the old content.
 - `rekey` keeps each file's algorithm and chunk size, resets Argon2id to the default unless `--paranoid` is given, and writes an armored file back as binary unless `--armor` is given again. To change the algorithm, decrypt and encrypt again.

@@ -4,7 +4,6 @@ import "errors"
 
 const (
 	SaltSize                   = 16
-	NonceSizeAESGCM            = 12 // AES-GCM nonce size 2^96
 	NonceSizeXChaCha20Poly1305 = 24 // XChaCha nonce size 2^192
 	KeySize                    = 32 // AES-GCM (256 bits), ChaCha20-Poly1305 (256 bits)
 	GCMTagSize                 = 16

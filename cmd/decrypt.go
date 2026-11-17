@@ -33,16 +33,6 @@ var decryptCmd = &cobra.Command{
 			return err
 		}
 
-		allPath := decryptDefaultPath(args, opts.extension)
-
-		if opts.output == "" {
-			for i, arg := range args {
-				if allPath[i] == arg+unknownExt {
-					fmt.Fprintf(cmd.ErrOrStderr(), "[!] %s: no %s extension, decrypting to %s\n", arg, outputExt(opts.extension), allPath[i])
-				}
-			}
-		}
-
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
 				return err
@@ -50,13 +40,28 @@ var decryptCmd = &cobra.Command{
 		}
 
 		// inputs
-		ins, err := openInput(args)
+		ins, err := openInput(cmd.ErrOrStderr(), args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
 
+		if len(ins) == 0 {
+			return nil
+		}
+
 		// outputs
+		paths := inputPaths(ins)
+		allPath := decryptDefaultPath(paths, opts.extension)
+
+		if opts.output == "" {
+			for i, path := range paths {
+				if allPath[i] == path+unknownExt {
+					fmt.Fprintf(cmd.ErrOrStderr(), "[!] %s: no %s extension, decrypting to %s\n", path, outputExt(opts.extension), allPath[i])
+				}
+			}
+		}
+
 		dests, err := resolveOutputs(opts.output, allPath, opts.force, fromStdin(args))
 		if err != nil {
 			return err

@@ -3,6 +3,8 @@ package cmd
 import (
 	"errors"
 	"fmt"
+
+	"github.com/n3pt0x/crypgo/internal/format"
 )
 
 const encryptedExt = ".crypgo"
@@ -16,7 +18,6 @@ var (
 	ErrOutputNeeded = errors.New("no output: use --output or redirect stdout (refusing to write to a terminal)")
 	ErrOutputExists = errors.New("output file already exists, use --force to overwrite it")
 	ErrOutputIsDir  = errors.New("output path is a directory")
-	ErrEmptyInput   = errors.New("input is empty")
 
 	ErrInvalidWorkers = fmt.Errorf("--workers must be between 1 and %d", maxWorkers)
 
@@ -37,6 +38,6 @@ var (
 	ErrKeyNeeded             = errors.New("file encrypted with a public key: give the private key with --key")
 	ErrKeyWithSymmetric      = errors.New("--key is only for files encrypted with a public key")
 	ErrParanoidWithRecipient = errors.New("--paranoid can't be used with --recipient: no passphrase protects the file")
-	ErrTooManyRecipients     = errors.New("too many recipients (at most 32)")
+	ErrTooManyRecipients     = fmt.Errorf("too many recipients (at most %d)", format.MaxRecipients)
 	ErrTrailingData          = errors.New("unexpected data after the key")
 )

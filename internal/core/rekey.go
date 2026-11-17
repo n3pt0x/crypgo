@@ -7,30 +7,43 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-// RekeySymmetric rewrites the passphrase stanza and copies the chunks unchanged.
-func RekeySymmetric(header format.Header, r io.Reader, w io.Writer, oldPassphrase, newPassphrase []byte, profile uint8) error {
+// PassphraseFile is a passphrase file whose file key is open, ready to be rekeyed.
+type PassphraseFile struct {
+	header  format.Header
+	fileKey []byte
+}
+
+// OpenPassphraseFile opens the file key of header with passphrase.
+func OpenPassphraseFile(header format.Header, passphrase []byte) (*PassphraseFile, error) {
 	if err := header.IsValid(); err != nil {
-		return err
+		return nil, err
 	}
 
 	if header.Mode != format.Symmetric {
-		return format.ErrInvalidMode
+		return nil, format.ErrInvalidMode
 	}
 
-	fileKey, err := openPassphraseStanza(header.Passphrase, oldPassphrase)
+	fileKey, err := openPassphraseStanza(header.Passphrase, passphrase)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer encryption.ZeroBytes(fileKey)
 
 	if err := checkCommitment(header.FileHeader, fileKey); err != nil {
-		return err
+		encryption.ZeroBytes(fileKey)
+		return nil, err
 	}
 
-	stanza, err := newPassphraseStanza(fileKey, newPassphrase, profile)
+	return &PassphraseFile{header: header, fileKey: fileKey}, nil
+}
+
+// Rekey writes the header with a stanza for newPassphrase, then copies the chunks of r unchanged.
+func (f *PassphraseFile) Rekey(r io.Reader, w io.Writer, newPassphrase []byte, profile uint8) error {
+	stanza, err := newPassphraseStanza(f.fileKey, newPassphrase, profile)
 	if err != nil {
 		return err
 	}
+
+	header := f.header
 	header.Passphrase = stanza
 
 	if _, err := header.WriteTo(w); err != nil {
@@ -40,4 +53,9 @@ func RekeySymmetric(header format.Header, r io.Reader, w io.Writer, oldPassphras
 	// the fixed part is unchanged, so the chunks stay valid
 	_, err = io.Copy(w, r)
 	return err
+}
+
+// Wipe clears the file key.
+func (f *PassphraseFile) Wipe() {
+	encryption.ZeroBytes(f.fileKey)
 }

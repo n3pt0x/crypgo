@@ -34,11 +34,15 @@ var rekeyCmd = &cobra.Command{
 		}
 
 		// inputs
-		ins, err := openInput(args)
+		ins, err := openInput(cmd.ErrOrStderr(), args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
+
+		if len(ins) == 0 {
+			return nil
+		}
 
 		isKeys, err := privateKeyInputs(ins)
 		if err != nil {
@@ -71,6 +75,21 @@ var rekeyCmd = &cobra.Command{
 		}
 		defer encryption.ZeroBytes(oldPassphrase)
 
+		// opened before asking for the new passphrase: a wrong one fails at once
+		files := make([]*core.PassphraseFile, 0, len(headers))
+		defer func() {
+			for _, f := range files {
+				f.Wipe()
+			}
+		}()
+		for key, h := range headers {
+			f, err := core.OpenPassphraseFile(h, oldPassphrase)
+			if err != nil {
+				return ins[key].wrap(err)
+			}
+			files = append(files, f)
+		}
+
 		newPassphrase, err := readPassphrase(promptNewPassphrase, true)
 		if err != nil {
 			return err
@@ -78,7 +97,7 @@ var rekeyCmd = &cobra.Command{
 		defer encryption.ZeroBytes(newPassphrase)
 
 		for key, in := range ins {
-			if err := rekey(in, headers[key], oldPassphrase, newPassphrase, profile, enc); err != nil {
+			if err := rekey(in, files[key], newPassphrase, profile, enc); err != nil {
 				return in.wrap(err)
 			}
 
@@ -95,7 +114,7 @@ func init() {
 	rootCmd.AddCommand(rekeyCmd)
 }
 
-func rekey(in *input, header format.Header, oldPassphrase, newPassphrase []byte, profile uint8, enc armor.Encoding) error {
+func rekey(in *input, file *core.PassphraseFile, newPassphrase []byte, profile uint8, enc armor.Encoding) error {
 	// a symbolic link must not be replaced by a file: rekey the file it points to
 	path, err := filepath.EvalSymlinks(in.file.Name())
 	if err != nil {
@@ -123,7 +142,7 @@ func rekey(in *input, header format.Header, oldPassphrase, newPassphrase []byte,
 		return err
 	}
 
-	if err := core.RekeySymmetric(header, in, w, oldPassphrase, newPassphrase, profile); err != nil {
+	if err := file.Rekey(in, w, newPassphrase, profile); err != nil {
 		return err
 	}
 

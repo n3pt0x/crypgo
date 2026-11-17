@@ -57,15 +57,21 @@ func (in *input) wrap(err error) error {
 }
 
 // openInput opens the files given as arguments, or stdin when there are none.
-func openInput(args []string) ([]*input, error) {
+// Empty inputs are skipped with a warning on warn: there is nothing to process.
+func openInput(warn io.Writer, args []string) ([]*input, error) {
 	if fromStdin(args) {
 		if isTerminal(os.Stdin) {
 			return nil, ErrNoInput
 		}
 
 		in := &input{Reader: bufio.NewReader(os.Stdin)}
-		if err := in.peek(); err != nil {
+		empty, err := in.empty()
+		if err != nil {
 			return nil, err
+		}
+		if empty {
+			fmt.Fprintln(warn, "[!] stdin: empty input, skipped")
+			return nil, nil
 		}
 		return []*input{in}, nil
 	}
@@ -79,15 +85,34 @@ func openInput(args []string) ([]*input, error) {
 		}
 
 		in := &input{Reader: bufio.NewReader(f), file: f}
-		ins = append(ins, in)
 
-		if err := in.peek(); err != nil {
+		empty, err := in.empty()
+		if err != nil {
+			in.Close()
 			closeInputs(ins)
 			return nil, in.wrap(err)
 		}
+		if empty {
+			fmt.Fprintf(warn, "[!] %s: empty file, skipped\n", arg)
+			in.Close()
+			continue
+		}
+
+		ins = append(ins, in)
 	}
 
 	return ins, nil
+}
+
+// inputPaths are the paths of the inputs, none for stdin.
+func inputPaths(ins []*input) []string {
+	paths := make([]string, 0, len(ins))
+	for _, in := range ins {
+		if in.file != nil {
+			paths = append(paths, in.file.Name())
+		}
+	}
+	return paths
 }
 
 func (in *input) unarmor() error {
@@ -141,15 +166,15 @@ func commonMode(headers []format.Header) (uint8, error) {
 	return mode, nil
 }
 
-// peek makes sure the input is not empty.
-func (in *input) peek() error {
+// empty reports whether the input has no data, without consuming anything.
+func (in *input) empty() (bool, error) {
 	if _, err := in.Peek(1); err != nil {
 		if errors.Is(err, io.EOF) {
-			return ErrEmptyInput
+			return true, nil
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return false, nil
 }
 
 func closeInputs(ins []*input) {

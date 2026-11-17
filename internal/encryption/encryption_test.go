@@ -128,7 +128,7 @@ func TestAEADRoundTrip(t *testing.T) {
 func TestChunkNonce(t *testing.T) {
 	prefix := bytes.Repeat([]byte{0xAA}, encryption.NoncePrefixSize)
 
-	for _, size := range []int{encryption.NonceSizeAESGCM, encryption.NonceSizeXChaCha20Poly1305} {
+	for _, size := range []int{12, encryption.NonceSizeXChaCha20Poly1305} { // AES-GCM, XChaCha20
 		nonce := make([]byte, size)
 		encryption.ChunkNonce(nonce, prefix, 0x0102, false)
 

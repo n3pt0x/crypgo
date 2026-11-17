@@ -55,8 +55,6 @@ var encryptCmd = &cobra.Command{
 			return err
 		}
 
-		allPath := encryptDefaultPath(args, opts.extension)
-
 		if opts.erase {
 			if err := checkDelete(args, opts.output); err != nil {
 				return err
@@ -64,13 +62,18 @@ var encryptCmd = &cobra.Command{
 		}
 
 		// inputs
-		ins, err := openInput(args)
+		ins, err := openInput(cmd.ErrOrStderr(), args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
 
+		if len(ins) == 0 {
+			return nil
+		}
+
 		// outputs
+		allPath := encryptDefaultPath(inputPaths(ins), opts.extension)
 		dests, err := resolveOutputs(opts.output, allPath, opts.force, false)
 		if err != nil {
 			return err
@@ -83,11 +86,20 @@ var encryptCmd = &cobra.Command{
 
 		if len(encryptRecipients) > 0 {
 			recipients := make([]hpke.PublicKey, 0, len(encryptRecipients))
+			seen := make(map[string]string, len(encryptRecipients)) // public key -> first path
 			for _, path := range encryptRecipients {
 				recipient, err := readPublicKey(path)
 				if err != nil {
 					return err
 				}
+
+				// the same key twice would only add a useless stanza
+				if first, dup := seen[string(recipient.Bytes())]; dup {
+					fmt.Fprintf(cmd.ErrOrStderr(), "[!] %s: same key as %s, ignored\n", path, first)
+					continue
+				}
+				seen[string(recipient.Bytes())] = path
+
 				recipients = append(recipients, recipient)
 			}
 

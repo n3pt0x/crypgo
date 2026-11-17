@@ -27,8 +27,6 @@ type PrivateKeyHeader struct {
 	Nonce      [encryption.NonceSizeXChaCha20Poly1305]byte // the key is always sealed with XChaCha20-Poly1305
 }
 
-const PrivateKeyHeaderSize = 57
-
 // PrivateKey is the binary form of a private key file (57 + 48 bytes):
 // the header, then the private key seed encrypted with a key derived from the
 // passphrase (32 bytes of key and the 16-byte Poly1305 tag).

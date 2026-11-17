@@ -29,8 +29,8 @@ func newPrivateKey() format.PrivateKey {
 }
 
 func TestPrivateKeyHeaderSize(t *testing.T) {
-	if got := binary.Size(format.PrivateKeyHeader{}); got != format.PrivateKeyHeaderSize {
-		t.Fatalf("binary.Size(PrivateKeyHeader) = %d, want %d", got, format.PrivateKeyHeaderSize)
+	if got := binary.Size(format.PrivateKeyHeader{}); got != 57 {
+		t.Fatalf("binary.Size(PrivateKeyHeader) = %d, want 57", got)
 	}
 }
 

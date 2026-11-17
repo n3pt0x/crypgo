@@ -20,8 +20,14 @@ func rekey(data []byte, oldPassphrase []byte, profile uint8) ([]byte, error) {
 		return nil, err
 	}
 
+	file, err := core.OpenPassphraseFile(header, oldPassphrase)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Wipe()
+
 	var out bytes.Buffer
-	err = core.RekeySymmetric(header, r, &out, oldPassphrase, newPassphrase, profile)
+	err = file.Rekey(r, &out, newPassphrase, profile)
 
 	return out.Bytes(), err
 }
@@ -32,7 +38,7 @@ func TestRekeySymmetric(t *testing.T) {
 
 	rekeyed, err := rekey(source, testPassphrase, encryption.KDFProfileArgon2idDefault)
 	if err != nil {
-		t.Fatalf("RekeySymmetric has failed: %v", err)
+		t.Fatalf("Rekey has failed: %v", err)
 	}
 
 	got, err := decrypt(rekeyed, newPassphrase, 4)
@@ -85,7 +91,7 @@ func TestRekeySymmetricErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := rekey(tt.data, tt.passphrase, tt.profile)
 			if !errors.Is(err, tt.want) {
-				t.Fatalf("RekeySymmetric = %v, want %v", err, tt.want)
+				t.Fatalf("Rekey = %v, want %v", err, tt.want)
 			}
 			if len(out) != 0 {
 				t.Fatalf("%d bytes were written despite the error", len(out))
@@ -101,7 +107,7 @@ func TestRekeySymmetricCopiesTamperedChunks(t *testing.T) {
 
 	rekeyed, err := rekey(source, testPassphrase, encryption.KDFProfileArgon2idDefault)
 	if err != nil {
-		t.Fatalf("RekeySymmetric has failed: %v", err)
+		t.Fatalf("Rekey has failed: %v", err)
 	}
 
 	if _, err := decrypt(rekeyed, newPassphrase, 1); !errors.Is(err, encryption.ErrDecryptionFailed) {
