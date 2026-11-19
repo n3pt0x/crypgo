@@ -114,13 +114,13 @@ var encryptCmd = &cobra.Command{
 			seal = symmetricSeal(passphrase, algo, profile, coreOpts)
 		}
 
-		for key, in := range ins {
-			if err := encrypt(in, dests[key], enc, seal); err != nil {
+		for i, in := range ins {
+			if err := encrypt(in, dests[i], enc, seal); err != nil {
 				return in.wrap(err)
 			}
 
-			if dests[key].path != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dests[key].path)
+			if dests[i].path != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Encrypted file : %s\n", dests[i].path)
 			}
 
 			if opts.erase {

@@ -242,7 +242,7 @@ Encoding: base64
 
 ### Key files
 
-Key files are always armored in base64, with their own label: `CRYPGO PUBLIC KEY` or `CRYPGO PRIVATE KEY`. A key is never taken for a message, nor one kind of key for the other. Nothing may follow the `END` line.
+Key files are always armored in base64, with their own label: `CRYPGO PUBLIC KEY` or `CRYPGO PRIVATE KEY`. A key is never taken for a message, nor one kind of key for the other. Anything after the `END` line is ignored.
 
 Public key, 1224 bytes:
 

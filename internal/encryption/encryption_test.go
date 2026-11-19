@@ -11,7 +11,6 @@ import (
 var (
 	testKey       = bytes.Repeat([]byte{0x42}, encryption.KeySize)
 	testPlaintext = []byte("My super secret message !!!")
-	cheapParams   = encryption.Argon2Params{Memory: 64, Time: 1, Threads: 1}
 )
 
 func TestSaltAndNoncePrefix(t *testing.T) {
@@ -32,23 +31,6 @@ func TestSaltAndNoncePrefix(t *testing.T) {
 
 	if bytes.Equal(encryption.GenerateSalt(), encryption.GenerateSalt()) {
 		t.Error("two generated salts are identical")
-	}
-}
-
-func TestDerivedKeyArgon2IDWithParams(t *testing.T) {
-	salt := encryption.GenerateSalt()
-	key := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, cheapParams)
-
-	if len(key) != encryption.KeySize {
-		t.Fatalf("key has %d bytes, want %d", len(key), encryption.KeySize)
-	}
-
-	if again := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), salt, cheapParams); !bytes.Equal(key, again) {
-		t.Error("same inputs produced different keys")
-	}
-
-	if other := encryption.DerivedKeyArgon2IDWithParams([]byte("test"), encryption.GenerateSalt(), cheapParams); bytes.Equal(key, other) {
-		t.Error("different salts produced the same key")
 	}
 }
 

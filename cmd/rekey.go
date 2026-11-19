@@ -3,6 +3,7 @@ package cmd
 import (
 	"crypto/hpke"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/n3pt0x/crypgo/internal/armor"
@@ -62,9 +63,9 @@ var rekeyCmd = &cobra.Command{
 		}
 
 		// a file encrypted with a public key has no passphrase to change
-		for key, h := range headers {
+		for i, h := range headers {
 			if h.Mode != format.Symmetric {
-				return ins[key].wrap(ErrRekeyAsymmetric)
+				return ins[i].wrap(ErrRekeyAsymmetric)
 			}
 		}
 
@@ -82,10 +83,10 @@ var rekeyCmd = &cobra.Command{
 				f.Wipe()
 			}
 		}()
-		for key, h := range headers {
+		for i, h := range headers {
 			f, err := core.OpenPassphraseFile(h, oldPassphrase)
 			if err != nil {
-				return ins[key].wrap(err)
+				return ins[i].wrap(err)
 			}
 			files = append(files, f)
 		}
@@ -96,8 +97,8 @@ var rekeyCmd = &cobra.Command{
 		}
 		defer encryption.ZeroBytes(newPassphrase)
 
-		for key, in := range ins {
-			if err := rekey(in, files[key], newPassphrase, profile, enc); err != nil {
+		for i, in := range ins {
+			if err := rekey(in, files[i], newPassphrase, profile, enc); err != nil {
 				return in.wrap(err)
 			}
 
@@ -114,14 +115,24 @@ func init() {
 	rootCmd.AddCommand(rekeyCmd)
 }
 
-func rekey(in *input, file *core.PassphraseFile, newPassphrase []byte, profile uint8, enc armor.Encoding) error {
+// rekeyTarget is the file to replace for in, and its permissions to keep.
+func rekeyTarget(in *input) (string, os.FileMode, error) {
 	// a symbolic link must not be replaced by a file: rekey the file it points to
 	path, err := filepath.EvalSymlinks(in.file.Name())
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 
 	info, err := in.file.Stat()
+	if err != nil {
+		return "", 0, err
+	}
+
+	return path, info.Mode().Perm(), nil
+}
+
+func rekey(in *input, file *core.PassphraseFile, newPassphrase []byte, profile uint8, enc armor.Encoding) error {
+	path, perm, err := rekeyTarget(in)
 	if err != nil {
 		return err
 	}
@@ -132,8 +143,7 @@ func rekey(in *input, file *core.PassphraseFile, newPassphrase []byte, profile u
 	}
 	defer out.Abort() // does nothing once committed
 
-	// keeps file permission
-	if err := out.Chmod(info.Mode().Perm()); err != nil {
+	if err := out.Chmod(perm); err != nil {
 		return err
 	}
 
@@ -224,17 +234,12 @@ func rekeyPrivateKeys(cmd *cobra.Command, ins []*input, profile uint8) error {
 
 // replacePrivateKey writes key over the file of in, atomically, with the same permissions.
 func replacePrivateKey(in *input, key format.PrivateKey) error {
-	path, err := filepath.EvalSymlinks(in.file.Name())
+	path, perm, err := rekeyTarget(in)
 	if err != nil {
 		return err
 	}
 
-	info, err := in.file.Stat()
-	if err != nil {
-		return err
-	}
-
-	w, err := writeKey(path, armor.PrivateKey, key, info.Mode().Perm())
+	w, err := writeKey(path, armor.PrivateKey, key, perm)
 	if err != nil {
 		return err
 	}

@@ -46,28 +46,18 @@ func poolSize(workers int) int {
 	return 4*workers + 2
 }
 
-// streamParams is what the chunk stream needs from a file header, whatever its mode.
-type streamParams struct {
-	aad         []byte // the fixed part of the header, authenticated with every chunk
-	chunkSize   int    // plaintext bytes per chunk
-	noncePrefix []byte
-}
-
-func fileStream(h format.FileHeader) streamParams {
-	return streamParams{aad: h.Bytes(), chunkSize: int(h.ChunkSize), noncePrefix: h.NoncePrefix[:]}
-}
-
-// sealStream encrypts r to w chunk by chunk, with p.aad as the AAD of every chunk.
-func sealStream(aead cipher.AEAD, p streamParams, r io.Reader, w io.Writer, workers int) error {
-	aad := p.aad
-	size := p.chunkSize
+// sealStream encrypts r to w chunk by chunk, with the fixed part h as the AAD of every chunk.
+func sealStream(aead cipher.AEAD, h format.FileHeader, r io.Reader, w io.Writer, workers int) error {
+	aad := h.Bytes()
+	prefix := h.NoncePrefix[:]
+	size := int(h.ChunkSize)
 
 	src := &chunkReader{r: bufio.NewReader(r), size: size}
 	pool := newBufferPool(size+aead.Overhead(), poolSize(workers))
 
 	return runPipeline(workers, src, pool, func(c *chunk) error {
 		nonce := make([]byte, aead.NonceSize())
-		encryption.ChunkNonce(nonce, p.noncePrefix, c.index, c.last)
+		encryption.ChunkNonce(nonce, prefix, c.index, c.last)
 
 		c.data = aead.Seal(c.data[:0], nonce, c.data, aad)
 		return nil
@@ -76,16 +66,17 @@ func sealStream(aead cipher.AEAD, p streamParams, r io.Reader, w io.Writer, work
 
 // openStream decrypts r to w chunk by chunk. Chunks are written as soon as they
 // authenticate, so a corrupted stream fails after earlier chunks were written.
-func openStream(aead cipher.AEAD, p streamParams, r io.Reader, w io.Writer, workers int) error {
-	aad := p.aad
-	size := p.chunkSize + aead.Overhead()
+func openStream(aead cipher.AEAD, h format.FileHeader, r io.Reader, w io.Writer, workers int) error {
+	aad := h.Bytes()
+	prefix := h.NoncePrefix[:]
+	size := int(h.ChunkSize) + aead.Overhead()
 
 	src := &chunkReader{r: bufio.NewReader(r), size: size, minSize: aead.Overhead()}
 	pool := newBufferPool(size, poolSize(workers))
 
 	return runPipeline(workers, src, pool, func(c *chunk) error {
 		nonce := make([]byte, aead.NonceSize())
-		encryption.ChunkNonce(nonce, p.noncePrefix, c.index, c.last)
+		encryption.ChunkNonce(nonce, prefix, c.index, c.last)
 
 		if !c.last {
 			plaintext, err := aead.Open(c.data[:0], nonce, c.data, aad)
@@ -100,7 +91,7 @@ func openStream(aead cipher.AEAD, p streamParams, r io.Reader, w io.Writer, work
 		plaintext, err := aead.Open(nil, nonce, c.data, aad)
 		if err != nil {
 			// A last chunk that authenticates as a middle one means the stream was cut after it.
-			encryption.ChunkNonce(nonce, p.noncePrefix, c.index, false)
+			encryption.ChunkNonce(nonce, prefix, c.index, false)
 			if middle, err := aead.Open(nil, nonce, c.data, aad); err == nil {
 				clear(middle)
 				return format.ErrTruncated

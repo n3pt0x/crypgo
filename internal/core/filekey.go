@@ -76,7 +76,7 @@ func encryptFile(h format.Header, fileKey []byte, r io.Reader, w io.Writer, work
 		return err
 	}
 
-	return sealStream(aead, fileStream(h.FileHeader), r, w, max(workers, 1))
+	return sealStream(aead, h.FileHeader, r, w, max(workers, 1))
 }
 
 // checkCommitment refuses a file key that is not the one of the header.
@@ -114,7 +114,7 @@ func decryptFile(h format.Header, fileKey []byte, r io.Reader, w io.Writer, work
 		return err
 	}
 
-	return openStream(aead, fileStream(h.FileHeader), r, w, max(workers, 1))
+	return openStream(aead, h.FileHeader, r, w, max(workers, 1))
 }
 
 func ReadHeader(r io.Reader) (format.Header, error) {

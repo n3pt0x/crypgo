@@ -14,6 +14,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	encryptedExt = ".crypgo"
+	unknownExt   = ".out" // decrypted file whose input has no encrypted extension
+	maxWorkers   = 256
+)
+
 // ioOptions are the flags shared by every command that turns an input into an output
 type ioOptions struct {
 	output    string

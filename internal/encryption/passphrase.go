@@ -2,7 +2,7 @@ package encryption
 
 // SealPassphrase encrypts plain with a key derived from passphrase.
 func SealPassphrase(passphrase []byte, params Argon2Params, salt, nonce, plain, aad []byte) ([]byte, error) {
-	derivedKey := DerivedKeyArgon2IDWithParams(passphrase, salt, params)
+	derivedKey := deriveKey(passphrase, salt, params)
 	defer ZeroBytes(derivedKey)
 
 	aead, err := NewXChaCha20Poly1305(derivedKey)
@@ -15,7 +15,7 @@ func SealPassphrase(passphrase []byte, params Argon2Params, salt, nonce, plain, 
 
 // OpenPassphrase returns ErrDecryptionFailed on a wrong passphrase.
 func OpenPassphrase(passphrase []byte, params Argon2Params, salt, nonce, wrapped, aad []byte) ([]byte, error) {
-	derivedKey := DerivedKeyArgon2IDWithParams(passphrase, salt, params)
+	derivedKey := deriveKey(passphrase, salt, params)
 	defer ZeroBytes(derivedKey)
 
 	aead, err := NewXChaCha20Poly1305(derivedKey)

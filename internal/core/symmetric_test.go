@@ -129,7 +129,7 @@ func TestDecryptSymmetricErrors(t *testing.T) {
 	}{
 		{"empty input", nil, testPassphrase, format.ErrTruncated},
 		{"header only", valid[:headerSize], testPassphrase, format.ErrTruncated},
-		{"shorter than a tag", valid[:headerSize+encryption.GCMTagSize-1], testPassphrase, format.ErrTruncated},
+		{"shorter than a tag", valid[:headerSize+encryption.TagSize-1], testPassphrase, format.ErrTruncated},
 		{"bad magic", with(func(b []byte) { b[0] ^= 0xff }), testPassphrase, format.ErrInvalidMagic},
 		{"two stanzas", with(func(b []byte) { b[stanzaCountOffset] = 2 }), testPassphrase, format.ErrInvalidStanzas},
 		{"wrong passphrase", valid, []byte("wrong passphrase"), encryption.ErrDecryptionFailed},

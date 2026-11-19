@@ -195,8 +195,8 @@ func TestReaderErrors(t *testing.T) {
 		"cut footer":       {strings.Replace(valid, armor.Message.Footer()+"\n", armor.Message.Footer()[:10], 1), armor.ErrTruncated},
 		"short footer":     {strings.Replace(valid, armor.Message.Footer()+"\n", "-----END X-----\n", 1), armor.ErrInvalidFooter},
 		"other footer":     {strings.Replace(valid, armor.Message.Footer(), armor.PublicKey.Footer(), 1), armor.ErrInvalidFooter},
-		"unknown encoding": {strings.Replace(valid, armor.FormatBase64, "Encoding: base32", 1), armor.ErrUnknownEncoding},
-		"missing blank":    {armor.Message.Header() + "\n" + armor.FormatBase64 + "\nAAAA\n", armor.ErrInvalidHeader},
+		"unknown encoding": {strings.Replace(valid, "Encoding: base64", "Encoding: base32", 1), armor.ErrUnknownEncoding},
+		"missing blank":    {armor.Message.Header() + "\n" + "Encoding: base64" + "\nAAAA\n", armor.ErrInvalidHeader},
 	}
 
 	for name, tt := range tests {
@@ -208,7 +208,7 @@ func TestReaderErrors(t *testing.T) {
 	}
 
 	t.Run("invalid characters", func(t *testing.T) {
-		text := armor.Message.Header() + "\n" + armor.FormatHex + "\n\nzz\n" + armor.Message.Footer() + "\n"
+		text := armor.Message.Header() + "\n" + "Encoding: hex" + "\n\nzz\n" + armor.Message.Footer() + "\n"
 		if _, err := decode(text); err == nil {
 			t.Fatal("expected an error for a non-hex body")
 		}

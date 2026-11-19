@@ -6,18 +6,18 @@ const (
 	SaltSize                   = 16
 	NonceSizeXChaCha20Poly1305 = 24 // XChaCha nonce size 2^192
 	KeySize                    = 32 // AES-GCM (256 bits), ChaCha20-Poly1305 (256 bits)
-	GCMTagSize                 = 16
+	TagSize                    = 16 // AES-GCM and XChaCha20-Poly1305
 )
 
 const (
 	// ML-KEM-768 + X25519 private key (seed).
 	PrivateKeySize        = 32
-	WrappedPrivateKeySize = PrivateKeySize + GCMTagSize // XChaCha20-Poly1305 has the same 16-byte tag
+	WrappedPrivateKeySize = PrivateKeySize + TagSize
 )
 
 const (
 	// File key.
-	WrappedFileKeySize = KeySize + GCMTagSize
+	WrappedFileKeySize = KeySize + TagSize
 	CommitmentSize     = 32 // HKDF-SHA256 of the file key
 )
 

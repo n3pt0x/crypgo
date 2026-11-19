@@ -50,8 +50,8 @@ var verifyCmd = &cobra.Command{
 		defer wipe()
 
 		// decrypt without writing anything: every chunk is still authenticated
-		for key, in := range ins {
-			if err := open(headers[key], in, io.Discard); err != nil {
+		for i, in := range ins {
+			if err := open(headers[i], in, io.Discard); err != nil {
 				return in.wrap(err)
 			}
 

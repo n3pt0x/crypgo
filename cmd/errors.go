@@ -7,10 +7,6 @@ import (
 	"github.com/n3pt0x/crypgo/internal/format"
 )
 
-const encryptedExt = ".crypgo"
-const unknownExt = ".out" // decrypted file whose input has no encrypted extension
-const maxWorkers = 256
-
 var (
 	ErrUnknownAlgo  = errors.New("unknown algorithm (expected: aes-gcm, xchacha20)")
 	ErrNoInput      = errors.New("no input: give a file or pipe data on stdin")

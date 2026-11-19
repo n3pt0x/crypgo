@@ -10,10 +10,10 @@ GOVULNCHECK = golang.org/x/vuln/cmd/govulncheck@v1.9.0
 all: build
 
 build:
-		go build -o $(TARGET) .
+	go build -o $(TARGET) .
 
 test:
-		go test ./...
+	go test ./...
 
 check:
 	go vet ./...
@@ -22,7 +22,7 @@ check:
 	go test -race ./...
 
 run: build
-		./$(TARGET)
+	./$(TARGET)
 
 fmt:
 	gofmt -w .
@@ -40,8 +40,8 @@ release:
 	done
 
 fclean: clean
-		rm -f $(TARGET)
-		rm -rf $(DIST)
+	rm -f $(TARGET)
+	rm -rf $(DIST)
 
 re: fclean all
 

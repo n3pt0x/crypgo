@@ -62,7 +62,8 @@ var decryptCmd = &cobra.Command{
 			}
 		}
 
-		dests, err := resolveOutputs(opts.output, allPath, opts.force, fromStdin(args))
+		// the plaintext may be shown on a terminal, from a file or from stdin
+		dests, err := resolveOutputs(opts.output, allPath, opts.force, true)
 		if err != nil {
 			return err
 		}
@@ -85,13 +86,13 @@ var decryptCmd = &cobra.Command{
 		}
 		defer wipe()
 
-		for key, in := range ins {
-			if err := decrypt(in, headers[key], dests[key], open); err != nil {
+		for i, in := range ins {
+			if err := decrypt(in, headers[i], dests[i], open); err != nil {
 				return in.wrap(err)
 			}
 
-			if dests[key].path != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dests[key].path)
+			if dests[i].path != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[+] Decrypted file : %s\n", dests[i].path)
 			}
 
 			if opts.erase {

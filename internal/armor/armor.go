@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	FormatBase64 = "Encoding: base64"
-	FormatHex    = "Encoding: hex"
+	formatBase64 = "Encoding: base64"
+	formatHex    = "Encoding: hex"
 )
 
 // Label names what an armored block holds, in its header and its footer. A
@@ -27,6 +27,33 @@ const (
 
 func (l Label) Header() string { return dashes + "BEGIN " + string(l) + dashes }
 func (l Label) Footer() string { return dashes + "END " + string(l) + dashes }
+
+// labels are the known labels, to name the one found when another is expected.
+var labels = []Label{Message, PublicKey, PrivateKey}
+
+// name is what a block of the label holds, for error messages.
+func (l Label) name() string {
+	switch l {
+	case PublicKey:
+		return "a public key"
+	case PrivateKey:
+		return "a private key"
+	default:
+		return "an encrypted file"
+	}
+}
+
+// LabelError is a block of another known label than the one expected.
+type LabelError struct {
+	Got, Want Label
+}
+
+func (e LabelError) Error() string {
+	return "this is " + e.Got.name() + ", not " + e.Want.name()
+}
+
+// Unwrap makes a LabelError an ErrInvalidHeader too.
+func (e LabelError) Unwrap() error { return ErrInvalidHeader }
 
 const lineWidth = 64
 
@@ -70,9 +97,9 @@ func ParseEncoding(name string) (Encoding, error) {
 
 func (e Encoding) line() string {
 	if e == Hex {
-		return FormatHex
+		return formatHex
 	}
-	return FormatBase64
+	return formatBase64
 }
 
 // NewWriter writes the armor header of label to w, then encodes what is written
@@ -236,13 +263,23 @@ func isBlank(c byte) bool {
 }
 
 // NewReader reads the armor header of label from br, then returns the decoded
-// binary data. Another label is refused with ErrInvalidHeader. The decoded
-// stream fails with ErrTruncated if the footer is missing.
+// binary data. Another known label is refused with a LabelError, anything else
+// with ErrInvalidHeader. The decoded stream fails with ErrTruncated if the
+// footer is missing.
 func NewReader(br *bufio.Reader, label Label) (io.Reader, error) {
 	br.Discard(leadingBlank(br))
 
 	header, err := readHeaderLine(br)
-	if err != nil || header != label.Header() {
+	if err != nil {
+		return nil, ErrInvalidHeader
+	}
+
+	if header != label.Header() {
+		for _, other := range labels {
+			if header == other.Header() {
+				return nil, LabelError{Got: other, Want: label}
+			}
+		}
 		return nil, ErrInvalidHeader
 	}
 
@@ -259,9 +296,9 @@ func NewReader(br *bufio.Reader, label Label) (io.Reader, error) {
 	body := &bodyReader{br: br, footer: label.Footer()}
 
 	switch format {
-	case FormatBase64:
+	case formatBase64:
 		return base64.NewDecoder(base64.StdEncoding, body), nil
-	case FormatHex:
+	case formatHex:
 		return hex.NewDecoder(body), nil
 	default:
 		return nil, ErrUnknownEncoding

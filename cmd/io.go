@@ -199,10 +199,16 @@ func resolveOutputs(out string, defaultPaths []string, force bool, terminalOK bo
 		}
 
 		if dest.path != "" {
-			if _, dup := seen[dest.path]; dup {
+			// absolute, so that a and ./a are the same output
+			abs, err := filepath.Abs(dest.path)
+			if err != nil {
+				return nil, err
+			}
+
+			if _, dup := seen[abs]; dup {
 				return nil, fmt.Errorf("%s: %w", dest.path, ErrOutputDuplicate)
 			}
-			seen[dest.path] = struct{}{}
+			seen[abs] = struct{}{}
 		}
 
 		dests = append(dests, dest)
