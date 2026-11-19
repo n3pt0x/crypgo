@@ -35,15 +35,11 @@ var rekeyCmd = &cobra.Command{
 		}
 
 		// inputs
-		ins, err := openInput(cmd.ErrOrStderr(), args)
+		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
-
-		if len(ins) == 0 {
-			return nil
-		}
 
 		isKeys, err := privateKeyInputs(ins)
 		if err != nil {
@@ -189,7 +185,7 @@ func rekeyPrivateKeys(cmd *cobra.Command, ins []*input, profile uint8) error {
 	for _, in := range ins {
 		key, err := readPrivateKeyInput(in)
 		if err != nil {
-			return err
+			return in.wrap(err)
 		}
 		keys = append(keys, key)
 	}

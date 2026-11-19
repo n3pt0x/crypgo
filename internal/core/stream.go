@@ -48,7 +48,7 @@ func poolSize(workers int) int {
 
 // sealStream encrypts r to w chunk by chunk, with the fixed part h as the AAD of every chunk.
 func sealStream(aead cipher.AEAD, h format.FileHeader, r io.Reader, w io.Writer, workers int) error {
-	aad := h.Bytes()
+	aad := h.AAD()
 	prefix := h.NoncePrefix[:]
 	size := int(h.ChunkSize)
 
@@ -67,7 +67,7 @@ func sealStream(aead cipher.AEAD, h format.FileHeader, r io.Reader, w io.Writer,
 // openStream decrypts r to w chunk by chunk. Chunks are written as soon as they
 // authenticate, so a corrupted stream fails after earlier chunks were written.
 func openStream(aead cipher.AEAD, h format.FileHeader, r io.Reader, w io.Writer, workers int) error {
-	aad := h.Bytes()
+	aad := h.AAD()
 	prefix := h.NoncePrefix[:]
 	size := int(h.ChunkSize) + aead.Overhead()
 

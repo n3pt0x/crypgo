@@ -246,24 +246,29 @@ func TestHeaderWriteToRefusesInvalid(t *testing.T) {
 	}
 }
 
-// Bytes covers the fixed part only.
-func TestHeaderBytes(t *testing.T) {
+// AAD covers the fixed part without the stanza count.
+func TestHeaderAAD(t *testing.T) {
 	h := newHeader(format.Asymmetric, 2)
 	data := writeHeader(t, h)
 
-	aad := h.Bytes()
-	if !bytes.Equal(aad, data[:fileHeaderSize]) {
-		t.Fatalf("Bytes() = %x\nwant the fixed part %x", aad, data[:fileHeaderSize])
+	aad := h.AAD()
+	if !bytes.Equal(aad, data[:fileHeaderSize-1]) {
+		t.Fatalf("AAD() = %x\nwant the fixed part without its last byte %x", aad, data[:fileHeaderSize-1])
 	}
 
 	h.Recipients[0][0] ^= 0xff
-	if !bytes.Equal(h.Bytes(), aad) {
-		t.Fatal("Bytes() changed with a stanza")
+	if !bytes.Equal(h.AAD(), aad) {
+		t.Fatal("AAD() changed with a stanza")
+	}
+
+	h.StanzaCount++
+	if !bytes.Equal(h.AAD(), aad) {
+		t.Fatal("AAD() changed with the stanza count")
 	}
 
 	h.Commitment[0] ^= 0xff
-	if bytes.Equal(h.Bytes(), aad) {
-		t.Fatal("Bytes() did not change with the commitment")
+	if bytes.Equal(h.AAD(), aad) {
+		t.Fatal("AAD() did not change with the commitment")
 	}
 }
 

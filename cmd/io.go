@@ -57,23 +57,12 @@ func (in *input) wrap(err error) error {
 }
 
 // openInput opens the files given as arguments, or stdin when there are none.
-// Empty inputs are skipped with a warning on warn: there is nothing to process.
-func openInput(warn io.Writer, args []string) ([]*input, error) {
+func openInput(args []string) ([]*input, error) {
 	if fromStdin(args) {
 		if isTerminal(os.Stdin) {
 			return nil, ErrNoInput
 		}
-
-		in := &input{Reader: bufio.NewReader(os.Stdin)}
-		empty, err := in.empty()
-		if err != nil {
-			return nil, err
-		}
-		if empty {
-			fmt.Fprintln(warn, "[!] stdin: empty input, skipped")
-			return nil, nil
-		}
-		return []*input{in}, nil
+		return []*input{{Reader: bufio.NewReader(os.Stdin)}}, nil
 	}
 
 	ins := make([]*input, 0, len(args))
@@ -83,25 +72,34 @@ func openInput(warn io.Writer, args []string) ([]*input, error) {
 			closeInputs(ins)
 			return nil, err
 		}
-
-		in := &input{Reader: bufio.NewReader(f), file: f}
-
-		empty, err := in.empty()
-		if err != nil {
-			in.Close()
-			closeInputs(ins)
-			return nil, in.wrap(err)
-		}
-		if empty {
-			fmt.Fprintf(warn, "[!] %s: empty file, skipped\n", arg)
-			in.Close()
-			continue
-		}
-
-		ins = append(ins, in)
+		ins = append(ins, &input{Reader: bufio.NewReader(f), file: f})
 	}
 
 	return ins, nil
+}
+
+// skipEmpty drops the empty inputs with a warning on warn: there is nothing to
+// encrypt in them. An encrypted file is never empty, so only encrypt skips them.
+func skipEmpty(warn io.Writer, ins []*input) ([]*input, error) {
+	kept := make([]*input, 0, len(ins))
+	for _, in := range ins {
+		empty, err := in.empty()
+		if err != nil {
+			return nil, in.wrap(err)
+		}
+		if !empty {
+			kept = append(kept, in)
+			continue
+		}
+
+		if in.file == nil {
+			fmt.Fprintln(warn, "[!] stdin: empty input, skipped")
+		} else {
+			fmt.Fprintf(warn, "[!] %s: empty file, skipped\n", in.file.Name())
+		}
+	}
+
+	return kept, nil
 }
 
 // inputPaths are the paths of the inputs, none for stdin.

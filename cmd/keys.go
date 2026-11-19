@@ -74,15 +74,28 @@ func readPrivateKey(path string) (format.PrivateKey, error) {
 	return key, nil
 }
 
-// readPrivateKeyInput is readPrivateKey for an input already opened.
+// readPrivateKeyInput is readPrivateKey for an input already opened, without its path in errors.
 func readPrivateKeyInput(in *input) (format.PrivateKey, error) {
 	var key format.PrivateKey
 	if err := readKey(in.Reader, armor.PrivateKey, &key); err != nil {
-		return format.PrivateKey{}, in.wrap(err)
+		return format.PrivateKey{}, err
 	}
 
 	if err := key.IsValid(); err != nil {
-		return format.PrivateKey{}, in.wrap(err)
+		return format.PrivateKey{}, err
+	}
+	return key, nil
+}
+
+// readPublicKeyInput reads and checks the public key of an input already opened.
+func readPublicKeyInput(in *input) (format.PublicKey, error) {
+	var key format.PublicKey
+	if err := readKey(in.Reader, armor.PublicKey, &key); err != nil {
+		return format.PublicKey{}, err
+	}
+
+	if _, err := core.OpenPublicKey(key); err != nil {
+		return format.PublicKey{}, err
 	}
 	return key, nil
 }

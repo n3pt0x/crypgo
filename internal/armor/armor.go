@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-const (
-	formatBase64 = "Encoding: base64"
-	formatHex    = "Encoding: hex"
-)
+// encodingKey names the header line that gives the encoding.
+const encodingKey = "Encoding"
 
 // Label names what an armored block holds, in its header and its footer. A
 // reader expects one label and refuses the others, so a key cannot be taken
@@ -97,9 +95,9 @@ func ParseEncoding(name string) (Encoding, error) {
 
 func (e Encoding) line() string {
 	if e == Hex {
-		return formatHex
+		return encodingKey + ": hex"
 	}
-	return formatBase64
+	return encodingKey + ": base64"
 }
 
 // NewWriter writes the armor header of label to w, then encodes what is written
@@ -283,26 +281,55 @@ func NewReader(br *bufio.Reader, label Label) (io.Reader, error) {
 		return nil, ErrInvalidHeader
 	}
 
-	format, err := readHeaderLine(br)
+	enc, err := readEncoding(br)
 	if err != nil {
-		return nil, ErrInvalidHeader
-	}
-
-	// the blank line that ends the header
-	if blank, err := readHeaderLine(br); err != nil || blank != "" {
-		return nil, ErrInvalidHeader
+		return nil, err
 	}
 
 	body := &bodyReader{br: br, footer: label.Footer()}
 
-	switch format {
-	case formatBase64:
-		return base64.NewDecoder(base64.StdEncoding, body), nil
-	case formatHex:
+	if enc == Hex {
 		return hex.NewDecoder(body), nil
-	default:
-		return nil, ErrUnknownEncoding
 	}
+	return base64.NewDecoder(base64.StdEncoding, body), nil
+}
+
+// readEncoding reads the "Key: value" lines of the header up to the blank one
+// that ends them. Only Encoding is used: the others are ignored, so later
+// versions can add some.
+func readEncoding(br *bufio.Reader) (Encoding, error) {
+	enc := None
+
+	for {
+		line, err := readHeaderLine(br)
+		if err != nil {
+			return None, ErrInvalidHeader
+		}
+		if line == "" {
+			break
+		}
+
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return None, ErrInvalidHeader
+		}
+		if strings.TrimSpace(key) != encodingKey {
+			continue
+		}
+
+		// a second Encoding line would be ambiguous
+		if enc != None {
+			return None, ErrInvalidHeader
+		}
+		if enc, err = ParseEncoding(strings.TrimSpace(value)); err != nil {
+			return None, err
+		}
+	}
+
+	if enc == None {
+		return None, ErrInvalidHeader
+	}
+	return enc, nil
 }
 
 // readHeaderLine reads one line of the header, without its line break. It fails

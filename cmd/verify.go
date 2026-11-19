@@ -21,15 +21,11 @@ var verifyCmd = &cobra.Command{
 			return err
 		}
 
-		ins, err := openInput(cmd.ErrOrStderr(), args)
+		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
-
-		if len(ins) == 0 {
-			return nil
-		}
 
 		// headers
 		headers, err := readHeaders(ins)

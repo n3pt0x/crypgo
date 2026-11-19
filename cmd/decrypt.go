@@ -40,15 +40,11 @@ var decryptCmd = &cobra.Command{
 		}
 
 		// inputs
-		ins, err := openInput(cmd.ErrOrStderr(), args)
+		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
-
-		if len(ins) == 0 {
-			return nil
-		}
 
 		// outputs
 		paths := inputPaths(ins)

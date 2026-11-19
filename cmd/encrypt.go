@@ -62,12 +62,16 @@ var encryptCmd = &cobra.Command{
 		}
 
 		// inputs
-		ins, err := openInput(cmd.ErrOrStderr(), args)
+		ins, err := openInput(args)
 		if err != nil {
 			return err
 		}
 		defer closeInputs(ins)
 
+		ins, err = skipEmpty(cmd.ErrOrStderr(), ins)
+		if err != nil {
+			return err
+		}
 		if len(ins) == 0 {
 			return nil
 		}

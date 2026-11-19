@@ -49,7 +49,7 @@ const (
 // MaxRecipients is the maximum number of stanzas in a public-key file.
 const MaxRecipients = 32
 
-// FileHeader is the fixed part of the header (61 bytes), the AAD of the chunks.
+// FileHeader is the fixed part of the header (61 bytes). See AAD.
 type FileHeader struct {
 	Magic          [6]byte
 	Version        uint8
@@ -201,9 +201,11 @@ func (h FileHeader) IsValid() error {
 	return nil
 }
 
-// Bytes returns the fixed part, the AAD of the chunks.
-func (h FileHeader) Bytes() []byte {
-	return structBytes(h)
+// AAD returns the fixed part without StanzaCount, its last byte: the AAD of the
+// chunks. Stanzas can then be added or removed without touching the chunks.
+func (h FileHeader) AAD() []byte {
+	b := structBytes(h)
+	return b[:len(b)-1]
 }
 
 // Header

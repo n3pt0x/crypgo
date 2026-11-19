@@ -42,6 +42,9 @@ crypgo decrypt notes.txt.crypgo
 
 # Check the file and the passphrase without writing anything
 crypgo verify notes.txt.crypgo
+
+# Show how files or keys are protected (mode, algorithm, Argon2id, recipients), without a passphrase
+crypgo inspect notes.txt.crypgo alice.key
 ```
 
 ### Options
@@ -141,7 +144,8 @@ Encrypted data is never printed to a terminal, armored text included: use `-o <f
 ## Good to know
 
 - There is no way to recover a lost passphrase.
-- Empty files, and an empty stdin, are skipped with a warning: there is nothing to encrypt or decrypt in them.
+- `encrypt` skips empty files, and an empty stdin, with a warning: there is nothing to encrypt in them. `decrypt`, `verify`, `rekey` and `inspect` refuse them: an encrypted file is never empty, so it was truncated.
+- `inspect` reads the header only: it checks neither the passphrase nor the chunks. Run `verify` for that.
 - The passphrase is read from the terminal even when data is piped (`/dev/tty`, or the console on Windows).
 - Output goes to a temporary file, renamed once everything is done. Ctrl-C and SIGTERM remove it; `SIGKILL` or a power loss can leave a `.crypgo-*.tmp` file next to the output.
 - Decrypting to stdout writes each chunk as soon as it is authenticated, so a corrupted input fails after the first chunks were printed. Decrypting to a file never leaves a partial result.
@@ -219,8 +223,8 @@ One stanza of 1168 bytes per recipient, so the header is 61 + 1168 × n bytes.
 
 - The plaintext is cut into chunks of the header's chunk size. Only the last one can be shorter, and an empty input gives a single empty chunk. Each chunk is sealed on its own and followed by its 16-byte authentication tag.
 - The nonce of a chunk is the nonce prefix (cut to fit the algorithm: 3 bytes for AES-GCM, 15 for XChaCha20), the chunk index as 8 big-endian bytes, and a final byte that is `1` for the last chunk and `0` otherwise. Each file has its own random file key, so the nonces never repeat under one key.
-- The fixed part of the header (61 bytes) is the additional authenticated data (AAD) of every chunk. The stanzas are not: each one is protected by its own tag, and tied to the file by the commitment.
-- Together, the index, the last-chunk byte and the AAD mean that modified, reordered, duplicated, added or removed chunks, and a modified header, all fail authentication. The number of workers is not part of the format.
+- The fixed part of the header without its last byte, the stanza count (so its first 60 bytes), is the additional authenticated data (AAD) of every chunk. The stanzas are not: each one is protected by its own tag, and tied to the file by the commitment. So stanzas can be added or removed by rewriting the header only, without touching the chunks.
+- Together, the index, the last-chunk byte and the AAD mean that modified, reordered, duplicated, added or removed chunks, and a modified fixed part, all fail authentication. A wrong stanza count shifts where the stanzas end and the chunks start, so it fails too. The number of workers is not part of the format.
 - New modes, algorithms or layouts get a new `Mode`, `Algorithm` or `Version` value.
 
 ### Armored text
@@ -236,6 +240,7 @@ Encoding: base64
 ```
 
 - `Encoding` is `base64` (standard alphabet, with padding) or `hex` (lowercase). A blank line ends the header.
+- The header is made of `Key: value` lines. `Encoding` is required, once; the other keys are ignored, so later versions can add some (a `Comment:` in a key file, for instance).
 - Decoding the body gives back the binary file byte for byte, so the authentication described above is unchanged.
 - When reading, line breaks and spaces in the body are ignored. Neither alphabet contains `-`, so the first one in the body starts the `END` line.
 - `decrypt` and `verify` tell the two forms apart by the start of the file: `-----` for text (after any blank lines or byte order mark), `CRYPGO` for binary.
