@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hpke"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/n3pt0x/crypgo/internal/core"
@@ -113,6 +114,35 @@ func TestAsymmetricMultipleRecipients(t *testing.T) {
 
 	if _, err := decryptAsym(data, c, 1); !errors.Is(err, encryption.ErrWrongIdentity) {
 		t.Fatalf("not a recipient: error = %v, want %v", err, encryption.ErrWrongIdentity)
+	}
+}
+
+// the stanza count is not in the AAD: a stanza can be removed by rewriting the header only
+func TestAsymmetricRemoveStanza(t *testing.T) {
+	a, b := newTestKey(t), newTestKey(t)
+	data := encryptAsym(t, []hpke.PublicKey{a.PublicKey(), b.PublicKey()}, format.AlgoXChaCha20Poly1305, testMessage, core.Options{})
+
+	// drop the second stanza, the chunks are copied as they are
+	removed := slices.Concat(data[:asymHeaderSize(1)], data[asymHeaderSize(2):])
+	removed[stanzaCountOffset] = 1
+
+	plaintext, err := decryptAsym(removed, a, 1)
+	if err != nil {
+		t.Fatalf("DecryptAsymmetric has failed: %v", err)
+	}
+	if !bytes.Equal(plaintext, testMessage) {
+		t.Fatalf("plaintext = %q, want %q", plaintext, testMessage)
+	}
+
+	if _, err := decryptAsym(removed, b, 1); !errors.Is(err, encryption.ErrWrongIdentity) {
+		t.Fatalf("removed recipient: error = %v, want %v", err, encryption.ErrWrongIdentity)
+	}
+
+	// a count that does not match the stanzas shifts the chunks, so it still fails
+	wrong := slices.Clone(data)
+	wrong[stanzaCountOffset] = 1
+	if _, err := decryptAsym(wrong, a, 1); err == nil {
+		t.Fatal("decrypted with a wrong stanza count")
 	}
 }
 

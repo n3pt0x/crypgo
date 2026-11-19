@@ -197,6 +197,9 @@ func TestReaderErrors(t *testing.T) {
 		"other footer":     {strings.Replace(valid, armor.Message.Footer(), armor.PublicKey.Footer(), 1), armor.ErrInvalidFooter},
 		"unknown encoding": {strings.Replace(valid, "Encoding: base64", "Encoding: base32", 1), armor.ErrUnknownEncoding},
 		"missing blank":    {armor.Message.Header() + "\n" + "Encoding: base64" + "\nAAAA\n", armor.ErrInvalidHeader},
+		"no encoding":      {strings.Replace(valid, "Encoding: base64\n", "", 1), armor.ErrInvalidHeader},
+		"two encodings":    {strings.Replace(valid, "Encoding: base64\n", "Encoding: base64\nEncoding: hex\n", 1), armor.ErrInvalidHeader},
+		"not a key: value": {strings.Replace(valid, "Encoding: base64\n", "Encoding: base64\nhello\n", 1), armor.ErrInvalidHeader},
 	}
 
 	for name, tt := range tests {
@@ -213,6 +216,31 @@ func TestReaderErrors(t *testing.T) {
 			t.Fatal("expected an error for a non-hex body")
 		}
 	})
+}
+
+// unknown "Key: value" lines are ignored, so later versions can add some
+func TestReaderIgnoresUnknownHeaderLines(t *testing.T) {
+	data := []byte("My super secret message !!!")
+
+	for name, enc := range encodings {
+		t.Run(name, func(t *testing.T) {
+			valid := encode(t, enc, data)
+			line := "Encoding: " + name + "\n"
+
+			for _, text := range []string{
+				strings.Replace(valid, line, "Comment: alice@example.com\n"+line, 1),
+				strings.Replace(valid, line, line+"Version: 9\n", 1),
+			} {
+				got, err := decode(text)
+				if err != nil {
+					t.Fatalf("decode has failed: %v\n%s", err, text)
+				}
+				if !bytes.Equal(got, data) {
+					t.Fatal("decoded data differs")
+				}
+			}
+		})
+	}
 }
 
 func TestNewWriterRejectsNone(t *testing.T) {
